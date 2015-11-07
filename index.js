@@ -151,33 +151,12 @@ IndigoPlatform.prototype.accessories = function(callback) {
 
 // Invokes callback(error), error is undefined if no error occurred
 IndigoPlatform.prototype.discoverAccessories = function(requestURL, callback) {
-    this.log("Discovering Indigo accessories from %s", requestURL);
-
-    this.indigoRequest(requestURL, "GET", null,
-        function(error, response, body) {
+    this.indigoRequestJSON(requestURL, "GET", null,
+        function(error, json) {
             if (error) {
-                var msg = "Error discovering Indigo accessories from " + requestURL + ": " + error;
-                this.log(msg);
                 callback(msg);
             }
             else {
-                // Indigo has a bug that if the first item has remote display disabled,
-                // the returned JSON array has an extra comma at the beginning
-                var firstComma = body.indexOf(",");
-                if (firstComma > 0 && firstComma < 5) {
-                    body = body.substr(0, firstComma) + body.substr(firstComma + 1);
-                }
-
-                var json;
-                try {
-                    json = JSON.parse(body);
-                } catch (e) {
-                    var msg2 = "Error parsing Indigo response: Exception: " + e + "\nResponse: " + body;
-                    this.log(msg2);
-                    callback(msg2);
-                    return;
-                }
-
                 async.eachSeries(json, this.addAccessory.bind(this),
                     function(asyncError) {
                         if (asyncError) {
@@ -188,14 +167,21 @@ IndigoPlatform.prototype.discoverAccessories = function(requestURL, callback) {
                     }
                 );
             }
-        }.bind(this)
+        }.bind(this),
+        // jsonFixer: Indigo has a bug that if the first item has remote display
+        // disabled, the returned JSON array has an extra comma at the beginning
+        function(body) {
+			var firstComma = body.indexOf(",");
+			if (firstComma > 0 && firstComma < 5) {
+				body = body.substr(0, firstComma) + body.substr(firstComma + 1);
+			}
+			return (body);
+        }
     );
 };
 
 // Invokes callback(error), error is undefined if no error occurred
 IndigoPlatform.prototype.addAccessory = function(item, callback) {
-    this.log("Discovering accessory from %s", item.restURL);
-
     this.indigoRequestJSON(item.restURL, "GET", null,
         function(error, json) {
             if (error) {
@@ -255,7 +241,7 @@ IndigoPlatform.prototype.indigoRequest = function(path, method, qs, callback) {
 };
 
 // Invokes callback(error, json) with JSON object returned by HTTP request
-IndigoPlatform.prototype.indigoRequestJSON = function(path, method, qs, callback) {
+IndigoPlatform.prototype.indigoRequestJSON = function(path, method, qs, callback, jsonFixer) {
     this.indigoRequest(path, method, qs,
         function(error, response, body) {
             if (error) {
@@ -264,6 +250,9 @@ IndigoPlatform.prototype.indigoRequestJSON = function(path, method, qs, callback
                 callback(msg);
             }
             else {
+            	if (jsonFixer) {
+            		body = jsonFixer(body);
+            	}
                 var json;
                 try {
                     var json = JSON.parse(body);
