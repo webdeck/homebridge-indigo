@@ -1,0 +1,30 @@
+{
+	"bridge": {
+		"name": "Homebridge",
+		"username": "CC:22:3D:E3:CE:30",
+		"port": 51826,
+		"pin": "031-45-154"
+	},
+
+	"description": "This is an example configuration file to configure the Indigo platform plugin. See README.md for more details.",
+
+	"platforms": [
+		{
+			"platform": "Indigo",
+			"name": "My Indigo Server",
+			"protocol": "http",
+			"host": "127.0.0.1",
+			"port": "8176",
+			"path": "",
+			"username": "myusername",
+			"password": "mypassword",
+			"includeActions": true,
+			"includeIds": [ "12345", "67890" ],
+			"excludeIds:": [ "98765", "43210" ],
+			"accessoryNamePrefix": ""
+		}
+	],
+
+	"accessories": [
+	]
+}
