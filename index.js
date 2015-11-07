@@ -328,8 +328,8 @@ IndigoAccessory.prototype.updateFromJSON = function(json) {
         }
     }
 
-    if (json.name) {
-        this.name = this.platform.accessoryNamePrefix + json.name;
+    if (json.name !== undefined) {
+        this.name = this.platform.accessoryNamePrefix + String(json.name);
     }
 };
 
