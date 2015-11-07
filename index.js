@@ -224,10 +224,13 @@ IndigoPlatform.prototype.includeItemId = function(id) {
 
 // Invokes callback(error, response, body) with result of HTTP request
 IndigoPlatform.prototype.indigoRequest = function(path, method, qs, callback) {
+	// seems to be a bug in request that if followRedirect is false and auth is
+	// required, it crashes because redirects is missing, so I include it here
     var options = {
         url: this.baseURL + path,
         method: method,
-        followRedirect: false
+        followRedirect: false,
+        redirects: []
     };
     if (this.auth) {
         options.auth = this.auth;
