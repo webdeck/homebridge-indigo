@@ -154,7 +154,7 @@ IndigoPlatform.prototype.discoverAccessories = function(requestURL, callback) {
     this.indigoRequestJSON(requestURL, "GET", null,
         function(error, json) {
             if (error) {
-                callback(msg);
+                callback(error);
             }
             else {
                 async.eachSeries(json, this.addAccessory.bind(this),
