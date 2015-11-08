@@ -180,12 +180,13 @@ IndigoPlatform.prototype.discoverAccessories = function(requestURL, callback) {
     );
 };
 
-// Invokes callback(error), error is undefined if no error occurred
+// Invokes callback(error), error is always undefined as we want to ignore errors
 IndigoPlatform.prototype.addAccessory = function(item, callback) {
     this.indigoRequestJSON(item.restURL, "GET", null,
         function(error, json) {
             if (error) {
-                callback(error);
+            	this.log("Ignoring accessory %s due to error", item.restURL);
+                callback();
             }
             else {
                 if (json.restParent == "actions") {
