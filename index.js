@@ -266,7 +266,7 @@ IndigoPlatform.prototype.indigoRequestJSON = function(path, method, qs, callback
                     callback(msg2);
                     return;
                 }
-                callback(null, json);
+                callback(undefined, json);
             }
         }.bind(this)
     );
@@ -361,7 +361,7 @@ IndigoAccessory.prototype.updateStatus = function(qs, callback) {
     );
 };
 
-// Invokes callback(error, value), error is null if no error occurred
+// Invokes callback(error, value), error is undefined if no error occurred
 IndigoAccessory.prototype.query = function(key, callback) {
     this.getStatus(
         function(error) {
@@ -369,7 +369,7 @@ IndigoAccessory.prototype.query = function(key, callback) {
                 callback(error);
             } else {
                 this.log("%s: query(%s) => %s", this.name, key, this[key]);
-                callback(null, this[key]);
+                callback(undefined, this[key]);
             }
         }.bind(this)
     );
@@ -384,7 +384,7 @@ IndigoAccessory.prototype.getOnState = function(callback) {
                 } else {
                     var onState = (this.isOn) ? 1 : 0;
                     this.log("%s: getOnState() => %s", this.name, onState);
-                    callback(null, onState);
+                    callback(undefined, onState);
                 }
             }.bind(this)
         );
@@ -463,7 +463,7 @@ IndigoFanAccessory.prototype.getRotationSpeed = function(callback) {
                 if (error) {
                     callback(error);
                 } else {
-                    callback(null, (speedIndex / 3.0) * 100.0);
+                    callback(undefined, (speedIndex / 3.0) * 100.0);
                 }
             }
         );
@@ -553,7 +553,7 @@ IndigoThermostatAccessory.prototype.getCurrentHeatingCooling = function(callback
                     mode = Characteristic.CurrentHeatingCoolingState.COOL;
                 }
                 this.log("%s: getCurrentHeatingCooling() => %s", this.name, mode);
-                callback(null, mode);
+                callback(undefined, mode);
             }
         }.bind(this)
     );
@@ -574,7 +574,7 @@ IndigoThermostatAccessory.prototype.getTargetHeatingCooling = function(callback)
                     mode = Characteristic.TargetHeatingCoolingState.AUTO;
                 }
                 this.log("%s: getTargetHeatingCooling() => %s", this.name, mode);
-                callback(null, mode);
+                callback(undefined, mode);
             }
         }.bind(this)
     );
@@ -620,7 +620,7 @@ IndigoThermostatAccessory.prototype.getTemperatureValue = function(key, callback
             } else {
                 var t = this.fahrenheitToCelsius(temperature);
                 this.log("%s: getTemperatureValue(%s) => %s", this.name, key, t);
-                callback(null, t);
+                callback(undefined, t);
             }
         }.bind(this)
     );
@@ -655,7 +655,7 @@ IndigoThermostatAccessory.prototype.getTargetTemperature = function(callback) {
                 }
                 var t = this.fahrenheitToCelsius(temperature);
                 this.log("%s: getTargetTemperature() => %s", this.name, t);
-                callback(null, t);
+                callback(undefined, t);
             }
         }.bind(this)
     );
@@ -687,7 +687,7 @@ IndigoThermostatAccessory.prototype.setTargetTemperature = function(temperature,
 
 IndigoThermostatAccessory.prototype.getTemperatureDisplayUnits = function(callback) {
 	this.log("%s: getTemperatureDisplayUnits() => %s", this.name, this.temperatureDisplayUnits);
-    callback(null, this.temperatureDisplayUnits);
+    callback(undefined, this.temperatureDisplayUnits);
 };
 
 IndigoThermostatAccessory.prototype.setTemperatureDisplayUnits = function(units, callback) {
@@ -736,25 +736,25 @@ function IndigoActionAccessory(platform, deviceURL, json) {
 
 // Actions always say they are off
 IndigoActionAccessory.prototype.getActionState = function(callback) {
-	this.log("%s: getActionState() => %s", this.name, 0);
-	callback(null, 0);
+	this.log("%s: getActionState() => %s", this.name, false);
+	callback(undefined, false);
 };
 
 // Execute the action and say it's off
 IndigoActionAccessory.prototype.executeAction = function(value, callback) {
-    this.log("%s: executeAction(%s) => %s", this.name, value, 0);
-    if (value == 1) {
+    this.log("%s: executeAction(%s) => %s", this.name, value, false);
+    if (value) {
         this.platform.indigoRequest(this.deviceURL, "EXECUTE", null,
             function(error, response, body) {
                 if (error) {
-                    callback(error, 0);
+                    callback(error, false);
                 } else {
-                    callback(null, 0);
+                    callback(undefined, false);
                 }
             }.bind(this)
         );
     }
     else {
-        callback(null, 0);
+        callback(undefined, false);
     }
 };
