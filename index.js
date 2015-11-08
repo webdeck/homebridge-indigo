@@ -382,7 +382,7 @@ IndigoAccessory.prototype.getOnState = function(callback) {
                 if (error) {
                     callback(error);
                 } else {
-                    var onState = (this.isOn) ? 1 : 0;
+                    var onState = (this.isOn) ? true : false;
                     this.log("%s: getOnState() => %s", this.name, onState);
                     callback(undefined, onState);
                 }
@@ -744,17 +744,22 @@ IndigoActionAccessory.prototype.getActionState = function(callback) {
 IndigoActionAccessory.prototype.executeAction = function(value, callback) {
     this.log("%s: executeAction(%s) => %s", this.name, value, false);
     if (value) {
+		// Turn the switch back off - calling back with false
+		// isn't enough to do that for some reason.
+		setTimeout(
+			function() {
+				this.getService(Service.Switch)
+					.getCharacteristic(Characteristic.On)
+					.setValue(false, undefined, 'fromSetValue');
+			}.bind(this),
+		100);
+
         this.platform.indigoRequest(this.deviceURL, "EXECUTE", null,
             function(error, response, body) {
-                if (error) {
-                    callback(error, false);
-                } else {
-                    callback(undefined, false);
-                }
-            }.bind(this)
+            	// Do nothing
+            }
         );
     }
-    else {
-        callback(undefined, false);
-    }
+
+	callback(undefined, false);
 };
