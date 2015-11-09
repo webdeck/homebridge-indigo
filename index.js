@@ -89,16 +89,21 @@ function IndigoPlatform(log, config) {
         port = config.port;
     }
 
-    var path = "";
+    this.path = "";
     if (config.path) {
-        path = config.path;
-        // Strip out trailing slash, since device URLs all start with a slash
-        if (path.length > 0 && path.charAt(path.length -1) == '/') {
-            path = path.substr(0, path.length - 1);
+        this.path = config.path;
+        // Make sure path doesn't end with a slash
+        if (this.path.length > 0 && this.path.charAt(this.path.length -1) == '/') {
+            this.path = this.path.substr(0, this.path.length - 1);
         }
+        // Make sure path begins with a slash
+        if (this.path.length > 0 && this.path.charAt(0) != "/") {
+        	this.path = "/" + this.path;
+        }
+        this.log("Path prefix is %s", this.path);
     }
 
-    this.baseURL = protocol + "://" + config.host + ":" + port + path;
+    this.baseURL = protocol + "://" + config.host + ":" + port;
     this.log("Indigo base URL is %s", this.baseURL);
 
     if (config.username && config.password) {
@@ -123,29 +128,28 @@ function IndigoPlatform(log, config) {
 // Invokes callback(accessories[])
 IndigoPlatform.prototype.accessories = function(callback) {
     this.foundAccessories = [];
-    var that = this;
 
-    var requestURLs = [ "/devices.json/" ];
+    var requestURLs = [ this.path + "/devices.json/" ];
     if (this.includeActions) {
-        requestURLs.push("/actions.json/");
+        requestURLs.push(this.path + "/actions.json/");
     }
 
     async.eachSeries(requestURLs,
         function(requestURL, asyncCallback) {
-            that.discoverAccessories(requestURL, asyncCallback);
-        },
+            this.discoverAccessories(requestURL, asyncCallback);
+        }.bind(this),
         function (asyncError) {
             if (asyncError) {
-                that.log(asyncError);
+                this.log(asyncError);
             }
 
-            that.log("Created %s accessories", that.foundAccessories.length);
-            callback(that.foundAccessories.sort(
+            this.log("Created %s accessories", this.foundAccessories.length);
+            callback(this.foundAccessories.sort(
                 function (a, b) {
                     return (a.name > b.name) - (a.name < b.name);
                 }
             ));
-        }
+        }.bind(this)
     );
 };
 
