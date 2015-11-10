@@ -5,6 +5,7 @@ Supports the following Indigo device types:
 * Lights and Switches (dimmable and non-dimmable, all represented as HomeKit lights)
 * Outlets (represented as HomeKit lights)
 * Thermostats (represented as HomeKit thermostats)
+* Ceiling Fans (represented as HomeKit fans)
 * Actions (optional, represented as HomeKit switches)
 
 # Installation
