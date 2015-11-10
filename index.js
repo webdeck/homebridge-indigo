@@ -98,7 +98,7 @@ function IndigoPlatform(log, config) {
         }
         // Make sure path begins with a slash
         if (this.path.length > 0 && this.path.charAt(0) != "/") {
-        	this.path = "/" + this.path;
+            this.path = "/" + this.path;
         }
         this.log("Path prefix is %s", this.path);
     }
@@ -175,11 +175,11 @@ IndigoPlatform.prototype.discoverAccessories = function(requestURL, callback) {
         // jsonFixer: Indigo has a bug that if the first item has remote display
         // disabled, the returned JSON array has an extra comma at the beginning
         function(body) {
-			var firstComma = body.indexOf(",");
-			if (firstComma > 0 && firstComma < 5) {
-				body = body.substr(0, firstComma) + body.substr(firstComma + 1);
-			}
-			return (body);
+            var firstComma = body.indexOf(",");
+            if (firstComma > 0 && firstComma < 5) {
+                body = body.substr(0, firstComma) + body.substr(firstComma + 1);
+            }
+            return (body);
         }
     );
 };
@@ -189,7 +189,7 @@ IndigoPlatform.prototype.addAccessory = function(item, callback) {
     this.indigoRequestJSON(item.restURL, "GET", null,
         function(error, json) {
             if (error) {
-            	this.log("Ignoring accessory %s due to error", item.restURL);
+                this.log("Ignoring accessory %s due to error", item.restURL);
                 callback();
             }
             else {
@@ -229,8 +229,8 @@ IndigoPlatform.prototype.includeItemId = function(id) {
 
 // Invokes callback(error, response, body) with result of HTTP request
 IndigoPlatform.prototype.indigoRequest = function(path, method, qs, callback) {
-	// seems to be a bug in request that if followRedirect is false and auth is
-	// required, it crashes because redirects is missing, so I include it here
+    // seems to be a bug in request that if followRedirect is false and auth is
+    // required, it crashes because redirects is missing, so I include it here
     var options = {
         url: this.baseURL + path,
         method: method,
@@ -258,9 +258,9 @@ IndigoPlatform.prototype.indigoRequestJSON = function(path, method, qs, callback
                 callback(msg);
             }
             else {
-            	if (jsonFixer) {
-            		body = jsonFixer(body);
-            	}
+                if (jsonFixer) {
+                    body = jsonFixer(body);
+                }
                 var json;
                 try {
                     var json = JSON.parse(body);
@@ -538,10 +538,10 @@ function IndigoThermostatAccessory(platform, deviceURL, json) {
         .on('get', this.getHeatingThresholdTemperature.bind(this))
         .on('set', this.setHeatingThresholdTemperature.bind(this));
 
-	if (this.displayHumidityInRemoteUI) {
-		this.getService(Service.Thermostat)
-			.getCharacteristic(Characteristic.CurrentRelativeHumidity)
-			.on('get', this.getCurrentRelativeHumidity.bind(this));
+    if (this.displayHumidityInRemoteUI) {
+        this.getService(Service.Thermostat)
+            .getCharacteristic(Characteristic.CurrentRelativeHumidity)
+            .on('get', this.getCurrentRelativeHumidity.bind(this));
     }
 }
 
@@ -691,7 +691,7 @@ IndigoThermostatAccessory.prototype.setTargetTemperature = function(temperature,
 };
 
 IndigoThermostatAccessory.prototype.getTemperatureDisplayUnits = function(callback) {
-	this.log("%s: getTemperatureDisplayUnits() => %s", this.name, this.temperatureDisplayUnits);
+    this.log("%s: getTemperatureDisplayUnits() => %s", this.name, this.temperatureDisplayUnits);
     callback(undefined, this.temperatureDisplayUnits);
 };
 
@@ -718,10 +718,10 @@ IndigoThermostatAccessory.prototype.setHeatingThresholdTemperature = function(te
 };
 
 IndigoThermostatAccessory.prototype.getCurrentRelativeHumidity = function(callback) {
-	if (this.displayHumidityInRemoteUI) {
-    	this.query("inputHumidityVals", callback);
+    if (this.displayHumidityInRemoteUI) {
+        this.query("inputHumidityVals", callback);
     } else {
-    	callback("Accessory does not support current relative humidity");
+        callback("Accessory does not support current relative humidity");
     }
 };
 
@@ -741,30 +741,34 @@ function IndigoActionAccessory(platform, deviceURL, json) {
 
 // Actions always say they are off
 IndigoActionAccessory.prototype.getActionState = function(callback) {
-	this.log("%s: getActionState() => %s", this.name, false);
-	callback(undefined, false);
+    this.log("%s: getActionState() => %s", this.name, false);
+    callback(undefined, false);
 };
 
 // Execute the action and say it's off
-IndigoActionAccessory.prototype.executeAction = function(value, callback) {
+IndigoActionAccessory.prototype.executeAction = function(value, callback, context) {
     this.log("%s: executeAction(%s) => %s", this.name, value, false);
     if (value) {
-		// Turn the switch back off - calling back with false
-		// isn't enough to do that for some reason.
-		setTimeout(
-			function() {
-				this.getService(Service.Switch)
-					.getCharacteristic(Characteristic.On)
-					.setValue(false, undefined, 'fromSetValue');
-			}.bind(this),
-		100);
+        if (context !== 'fromSetValue') {
+            // Turn the switch back off - calling back with false
+            // isn't enough to do that for some reason.
+            setTimeout(
+                function() {
+                    this.getService(Service.Switch)
+                        .getCharacteristic(Characteristic.On)
+                        .setValue(false, undefined, 'fromSetValue');
+                }.bind(this),
+            100);
+        }
 
         this.platform.indigoRequest(this.deviceURL, "EXECUTE", null,
             function(error, response, body) {
-            	// Do nothing
+                // Do nothing
             }
         );
     }
 
-	callback(undefined, false);
+    if (callback) {
+        callback(undefined, false);
+    }
 };
