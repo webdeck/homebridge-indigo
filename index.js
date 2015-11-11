@@ -745,30 +745,29 @@ IndigoActionAccessory.prototype.getActionState = function(callback) {
     callback(undefined, false);
 };
 
-// Execute the action and say it's off
+// Execute the action and turn the switch back off
 IndigoActionAccessory.prototype.executeAction = function(value, callback, context) {
-    this.log("%s: executeAction(%s) => %s", this.name, value, false);
-    if (value) {
-        if (context !== 'fromSetValue') {
-            // Turn the switch back off - calling back with false
-            // isn't enough to do that for some reason.
-            setTimeout(
-                function() {
-                    this.getService(Service.Switch)
-                        .getCharacteristic(Characteristic.On)
-                        .setValue(false, undefined, 'fromSetValue');
-                }.bind(this),
-            100);
-        }
-
+    this.log("%s: executeAction(%s)", this.name, value);
+    if (value && context !== 'fromSetValue') {
         this.platform.indigoRequest(this.deviceURL, "EXECUTE", null,
             function(error, response, body) {
-                // Do nothing
-            }
+                if (error) {
+                    this.log("Error executing action group: %s", error);
+                }
+            }.bind(this)
         );
+
+        // Turn the switch back off
+        setTimeout(
+            function() {
+                this.getService(Service.Switch)
+                    .getCharacteristic(Characteristic.On)
+                    .setValue(false, undefined, 'fromSetValue');
+            }.bind(this),
+        1000);
     }
 
     if (callback) {
-        callback(undefined, false);
+        callback();
     }
 };
