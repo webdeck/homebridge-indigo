@@ -18,6 +18,7 @@ Configuration example for your Homebridge config.json:
         "includeActions": true,
         "includeIds": [ "12345", "67890" ],
         "excludeIds:": [ "98765", "43210" ],
+        "thermostatsInCelsius": false,
         "accessoryNamePrefix": ""
     }
 ]
@@ -34,6 +35,7 @@ Fields:
     "includeActions": If true, creates HomeKit switches for your actions (optional, defaults to false)
     "includeIds": Array of Indigo IDs to include (optional - if provided, only these Indigo IDs will map to HomeKit devices)
     "excludeIds": Array of Indigo IDs to exclude (optional - if provided, these Indigo IDs will not be mapped to HomeKit devices)
+    "thermostatsInCelsius": If true, thermostats in Indigo are reporting temperatures in celsius (optional, defaults to false)
     "accessoryNamePrefix": Prefix all accessory names with this string (optional, useful for testing)
 
 Note that if you specify both "includeIds" and "excludeIds", then only the IDs that are in
@@ -117,6 +119,7 @@ function IndigoPlatform(log, config) {
     this.includeActions = config.includeActions;
     this.includeIds = config.includeIds;
     this.excludeIds = config.excludeIds;
+    this.thermostatsInCelsius = config.thermostatsInCelsius;
 
     if (config.accessoryNamePrefix) {
         this.accessoryNamePrefix = config.accessoryNamePrefix;
@@ -282,7 +285,7 @@ IndigoPlatform.prototype.createAccessoryFromJSON = function(deviceURL, json) {
     if (json.restParent == "actions") {
         return new IndigoActionAccessory(this, deviceURL, json);
     } else if (json.typeSupportsHVAC) {
-        return new IndigoThermostatAccessory(this, deviceURL, json);
+        return new IndigoThermostatAccessory(this, deviceURL, json, this.thermostatsInCelsius);
     } else if (json.typeSupportsSpeedControl) {
         return new IndigoFanAccessory(this, deviceURL, json);
     } else if (json.typeSupportsDim || json.typeSupportsOnOff) {
@@ -306,18 +309,16 @@ function IndigoAccessory(platform, deviceURL, json) {
 
     Accessory.call(this, this.name, uuid.generate(String(this.id)));
 
-    this.getService(Service.AccessoryInformation)
-        .setCharacteristic(Characteristic.Manufacturer, "Indigo")
+    var s = this.getService(Service.AccessoryInformation);
+    s.setCharacteristic(Characteristic.Manufacturer, "Indigo")
         .setCharacteristic(Characteristic.SerialNumber, String(this.id));
 
     if (this.type) {
-        this.getService(Service.AccessoryInformation)
-            .setCharacteristic(Characteristic.Model, this.type);
+        s.setCharacteristic(Characteristic.Model, this.type);
     }
 
     if (this.versByte) {
-        this.getService(Service.AccessoryInformation)
-            .setCharacteristic(Characteristic.FirmwareRevision, this.versByte);
+        s.setCharacteristic(Characteristic.FirmwareRevision, this.versByte);
     }
 }
 
@@ -413,14 +414,13 @@ IndigoAccessory.prototype.setOnState = function(onState, callback) {
 function IndigoLightAccessory(platform, deviceURL, json) {
     IndigoAccessory.call(this, platform, deviceURL, json);
 
-    this.addService(Service.Lightbulb)
-        .getCharacteristic(Characteristic.On)
+    var s = this.addService(Service.Lightbulb);
+    s.getCharacteristic(Characteristic.On)
         .on('get', this.getOnState.bind(this))
         .on('set', this.setOnState.bind(this));
 
     if (this.typeSupportsDim) {
-        this.getService(Service.Lightbulb)
-            .getCharacteristic(Characteristic.Brightness)
+        s.getCharacteristic(Characteristic.Brightness)
             .on('get', this.getBrightness.bind(this))
             .on('set', this.setBrightness.bind(this));
     }
@@ -450,13 +450,12 @@ IndigoLightAccessory.prototype.setBrightness = function(brightness, callback) {
 function IndigoFanAccessory(platform, deviceURL, json) {
     IndigoAccessory.call(this, platform, deviceURL, json);
 
-    this.addService(Service.Fan)
-        .getCharacteristic(Characteristic.On)
+    var s = this.addService(Service.Fan);
+    s.getCharacteristic(Characteristic.On)
         .on('get', this.getOnState.bind(this))
         .on('set', this.setOnState.bind(this));
 
-    this.getService(Service.Fan)
-        .getCharacteristic(Characteristic.RotationSpeed)
+    s.getCharacteristic(Characteristic.RotationSpeed)
         .on('get', this.getRotationSpeed.bind(this))
         .on('set', this.setRotationSpeed.bind(this));
 }
@@ -500,47 +499,44 @@ IndigoFanAccessory.prototype.setRotationSpeed = function(rotationSpeed, callback
 // Indigo Thermostat Accessory
 //
 
-function IndigoThermostatAccessory(platform, deviceURL, json) {
+function IndigoThermostatAccessory(platform, deviceURL, json, thermostatsInCelsius) {
     IndigoAccessory.call(this, platform, deviceURL, json);
 
-    this.temperatureDisplayUnits = Characteristic.TemperatureDisplayUnits.FAHRENHEIT;
+    this.thermostatsInCelsius = thermostatsInCelsius;
 
-    this.addService(Service.Thermostat)
-        .getCharacteristic(Characteristic.CurrentHeatingCoolingState)
+    this.temperatureDisplayUnits = (thermostatsInCelsius) ?
+        Characteristic.TemperatureDisplayUnits.CELSIUS :
+        Characteristic.TemperatureDisplayUnits.FAHRENHEIT;
+
+    var s = this.addService(Service.Thermostat);
+    s.getCharacteristic(Characteristic.CurrentHeatingCoolingState)
         .on('get', this.getCurrentHeatingCooling.bind(this));
 
-    this.getService(Service.Thermostat)
-        .getCharacteristic(Characteristic.TargetHeatingCoolingState)
+    s.getCharacteristic(Characteristic.TargetHeatingCoolingState)
         .on('get', this.getTargetHeatingCooling.bind(this))
         .on('set', this.setTargetHeatingCooling.bind(this));
 
-    this.getService(Service.Thermostat)
-        .getCharacteristic(Characteristic.CurrentTemperature)
+    s.getCharacteristic(Characteristic.CurrentTemperature)
         .on('get', this.getCurrentTemperature.bind(this));
 
-    this.getService(Service.Thermostat)
-        .getCharacteristic(Characteristic.TargetTemperature)
+    s.getCharacteristic(Characteristic.TargetTemperature)
         .on('get', this.getTargetTemperature.bind(this))
         .on('set', this.setTargetTemperature.bind(this));
 
-    this.getService(Service.Thermostat)
-        .getCharacteristic(Characteristic.TemperatureDisplayUnits)
+    s.getCharacteristic(Characteristic.TemperatureDisplayUnits)
         .on('get', this.getTemperatureDisplayUnits.bind(this))
         .on('set', this.setTemperatureDisplayUnits.bind(this));
 
-    this.getService(Service.Thermostat)
-        .getCharacteristic(Characteristic.CoolingThresholdTemperature)
+    s.getCharacteristic(Characteristic.CoolingThresholdTemperature)
         .on('get', this.getCoolingThresholdTemperature.bind(this))
         .on('set', this.setCoolingThresholdTemperature.bind(this));
 
-    this.getService(Service.Thermostat)
-        .getCharacteristic(Characteristic.HeatingThresholdTemperature)
+    s.getCharacteristic(Characteristic.HeatingThresholdTemperature)
         .on('get', this.getHeatingThresholdTemperature.bind(this))
         .on('set', this.setHeatingThresholdTemperature.bind(this));
 
     if (this.displayHumidityInRemoteUI) {
-        this.getService(Service.Thermostat)
-            .getCharacteristic(Characteristic.CurrentRelativeHumidity)
+        s.getCharacteristic(Characteristic.CurrentRelativeHumidity)
             .on('get', this.getCurrentRelativeHumidity.bind(this));
     }
 }
@@ -608,13 +604,21 @@ IndigoThermostatAccessory.prototype.setTargetHeatingCooling = function(mode, cal
     }
 };
 
-// Note: Service.Thermostat seems to want all temperature values in celsius
-IndigoThermostatAccessory.prototype.celsiusToFahrenheit = function(degreesCelsius) {
-    return (Math.round(((degreesCelsius * 9.0 / 5.0) + 32.0) * 10.0) / 10.0);
+// Note: HomeKit wants all temperature values in celsius, so convert if needed
+IndigoThermostatAccessory.prototype.celsiusToIndigoTemp = function(temperature) {
+    if (this.thermostatsInCelsius) {
+        return (temperature);
+    } else {
+        return (Math.round(((temperature * 9.0 / 5.0) + 32.0) * 10.0) / 10.0);
+    }
 }
 
-IndigoThermostatAccessory.prototype.fahrenheitToCelsius = function(degreesFahrenheit) {
-    return (Math.round(((degreesFahrenheit - 32.0) * 5.0 / 9.0) * 10.0) / 10.0);
+IndigoThermostatAccessory.prototype.indigoTempToCelsius = function(temperature) {
+    if (this.thermostatsInCelsius) {
+        return (temperature);
+    } else {
+        return (Math.round(((temperature - 32.0) * 5.0 / 9.0) * 10.0) / 10.0);
+    }
 }
 
 IndigoThermostatAccessory.prototype.getTemperatureValue = function(key, callback) {
@@ -623,7 +627,7 @@ IndigoThermostatAccessory.prototype.getTemperatureValue = function(key, callback
             if (error) {
                 callback(error);
             } else {
-                var t = this.fahrenheitToCelsius(temperature);
+                var t = this.indigoTempToCelsius(temperature);
                 this.log("%s: getTemperatureValue(%s) => %s", this.name, key, t);
                 callback(undefined, t);
             }
@@ -634,7 +638,7 @@ IndigoThermostatAccessory.prototype.getTemperatureValue = function(key, callback
 IndigoThermostatAccessory.prototype.setTemperatureValue = function(key, temperature, callback) {
     this.log("%s: setTemperatureValue(%s, %s)", this.name, key, temperature);
     var qs = { };
-    qs[key] = this.celsiusToFahrenheit(temperature);
+    qs[key] = this.celsiusToIndigoTemp(temperature);
     this.updateStatus(qs, callback);
 };
 
@@ -658,7 +662,7 @@ IndigoThermostatAccessory.prototype.getTargetTemperature = function(callback) {
                 else {
                     temperature = (this.setpointHeat + this.setpointCool) / 2.0;
                 }
-                var t = this.fahrenheitToCelsius(temperature);
+                var t = this.indigoTempToCelsius(temperature);
                 this.log("%s: getTargetTemperature() => %s", this.name, t);
                 callback(undefined, t);
             }
@@ -668,7 +672,7 @@ IndigoThermostatAccessory.prototype.getTargetTemperature = function(callback) {
 
 IndigoThermostatAccessory.prototype.setTargetTemperature = function(temperature, callback) {
     this.log("%s: setTargetTemperature(%s)", this.name, temperature);
-    var t = this.celsiusToFahrenheit(temperature);
+    var t = this.celsiusToIndigoTemp(temperature);
     this.getStatus(
         function(error) {
             if (error) {
@@ -682,7 +686,8 @@ IndigoThermostatAccessory.prototype.setTargetTemperature = function(temperature,
                     qs = { setpointCool: t };
                 }
                 else {
-                    qs = { setpointCool: t + 5, setpointHeat: t - 5 };
+                    var adjust = (this.thermostatsInCelsius) ? 2 : 5;
+                    qs = { setpointCool: t + adjust, setpointHeat: t - adjust };
                 }
                 this.updateStatus(qs, callback);
             }
