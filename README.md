@@ -60,3 +60,8 @@ expose everything, then omit both of these keys from your configuration.
 
 Also note that any Indigo devices or actions that have Remote Display unchecked in Indigo
 will NOT be exposed to HomeKit, because Indigo excludes those devices from its RESTful API.
+
+HomeKit limits bridges to 100 devices, so if you have more than 99 Indigo
+devices (and action groups, if you're including them), then you will want
+to use includeIds or excludeIds to get your list down to under 100.
+homebridge-indigo will only include up to the first 99 accessories discovered.

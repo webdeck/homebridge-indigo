@@ -146,6 +146,14 @@ IndigoPlatform.prototype.accessories = function(callback) {
                 this.log(asyncError);
             }
 
+            if (this.foundAccessories.length > 99) {
+                this.log("*** WARNING *** you have %s accessories.",
+                         this.foundAccessories.length);
+                this.log("*** Limiting to the first 99 discovered. ***");
+                this.log("*** See README.md for how to filter your list. ***");
+                this.foundAccessories = this.foundAccessories.slice(0, 99);
+            }
+
             this.log("Created %s accessories", this.foundAccessories.length);
             callback(this.foundAccessories.sort(
                 function (a, b) {
