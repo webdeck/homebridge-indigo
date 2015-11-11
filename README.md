@@ -32,6 +32,7 @@ Configuration sample:
 			"includeActions": true,
 			"includeIds": [ "12345", "67890" ],
 			"excludeIds:": [ "98765", "43210" ],
+			"thermostatsInCelsius": false,
 			"accessoryNamePrefix": ""
 		}
 	]
@@ -49,6 +50,7 @@ Fields:
 * "includeActions": If true, creates HomeKit switches for your actions (optional, defaults to false)
 * "includeIds": Array of Indigo IDs to include (optional - if provided, only these Indigo IDs will map to HomeKit devices)
 * "excludeIds": Array of Indigo IDs to exclude (optional - if provided, these Indigo IDs will not be mapped to HomeKit devices)
+* "thermostatsInCelsius": If true, thermostats in Indigo are reporting temperatures in celsius (optional, defaults to false)
 * "accessoryNamePrefix": Prefix all accessory names with this string (optional, useful for testing)
 
 Note that if you specify both "includeIds" and "excludeIds", then only the IDs that are in
