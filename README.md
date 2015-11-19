@@ -2,8 +2,8 @@
 [Homebridge](https://github.com/nfarina/homebridge) platform plugin for the [Indigo home automation server](http://indigodomotics.com/)
 
 Supports the following Indigo device types:
-* Lights and Switches (dimmable and non-dimmable, all represented as HomeKit lights)
-* Outlets (represented as HomeKit lights)
+* Lights and Switches (dimmable and non-dimmable, represented as HomeKit lightbulbs)
+* Outlets (represented as HomeKit lightbulbs)
 * Thermostats (represented as HomeKit thermostats)
 * Ceiling Fans (represented as HomeKit fans)
 * Actions (optional, represented as HomeKit switches)
@@ -31,7 +31,8 @@ Configuration sample:
 			"password": "mypassword",
 			"includeActions": true,
 			"includeIds": [ "12345", "67890" ],
-			"excludeIds:": [ "98765", "43210" ],
+			"excludeIds": [ "98765", "43210" ],
+			"treatAsSwitchIds": [ "13579", "24680" ],
 			"thermostatsInCelsius": false,
 			"accessoryNamePrefix": ""
 		}
@@ -50,6 +51,7 @@ Fields:
 * "includeActions": If true, creates HomeKit switches for your actions (optional, defaults to false)
 * "includeIds": Array of Indigo IDs to include (optional - if provided, only these Indigo IDs will map to HomeKit devices)
 * "excludeIds": Array of Indigo IDs to exclude (optional - if provided, these Indigo IDs will not be mapped to HomeKit devices)
+* "treatAsSwitchIds": Array of Indigo IDs to treat as switches (instead of lightbulbs) - devices must support on/off to qualify
 * "thermostatsInCelsius": If true, thermostats in Indigo are reporting temperatures in celsius (optional, defaults to false)
 * "accessoryNamePrefix": Prefix all accessory names with this string (optional, useful for testing)
 

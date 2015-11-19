@@ -17,7 +17,8 @@ Configuration example for your Homebridge config.json:
         "password": "mypassword",
         "includeActions": true,
         "includeIds": [ "12345", "67890" ],
-        "excludeIds:": [ "98765", "43210" ],
+        "excludeIds": [ "98765", "43210" ],
+        "treatAsSwitchIds": [ "13579", "24680" ],
         "thermostatsInCelsius": false,
         "accessoryNamePrefix": ""
     }
@@ -35,6 +36,7 @@ Fields:
     "includeActions": If true, creates HomeKit switches for your actions (optional, defaults to false)
     "includeIds": Array of Indigo IDs to include (optional - if provided, only these Indigo IDs will map to HomeKit devices)
     "excludeIds": Array of Indigo IDs to exclude (optional - if provided, these Indigo IDs will not be mapped to HomeKit devices)
+    "treatAsSwitchIds": Array of Indigo IDs to treat as switches (instead of lightbulbs) - devices must support on/off to qualify
     "thermostatsInCelsius": If true, thermostats in Indigo are reporting temperatures in celsius (optional, defaults to false)
     "accessoryNamePrefix": Prefix all accessory names with this string (optional, useful for testing)
 
@@ -59,6 +61,7 @@ module.exports = function(homebridge) {
     uuid = homebridge.hap.uuid;
 
     fixInheritance(IndigoAccessory, Accessory);
+    fixInheritance(IndigoSwitchAccessory, IndigoAccessory);
     fixInheritance(IndigoLightAccessory, IndigoAccessory);
     fixInheritance(IndigoFanAccessory, IndigoAccessory);
     fixInheritance(IndigoThermostatAccessory, IndigoAccessory);
@@ -119,6 +122,7 @@ function IndigoPlatform(log, config) {
     this.includeActions = config.includeActions;
     this.includeIds = config.includeIds;
     this.excludeIds = config.excludeIds;
+    this.treatAsSwitchIds = config.treatAsSwitchIds;
     this.thermostatsInCelsius = config.thermostatsInCelsius;
 
     if (config.accessoryNamePrefix) {
@@ -292,6 +296,9 @@ IndigoPlatform.prototype.indigoRequestJSON = function(path, method, qs, callback
 IndigoPlatform.prototype.createAccessoryFromJSON = function(deviceURL, json) {
     if (json.restParent == "actions") {
         return new IndigoActionAccessory(this, deviceURL, json);
+    } else if (json.typeSupportsOnOff && this.treatAsSwitchIds &&
+               (this.treatAsSwitchIds.indexOf(String(json.id)) >= 0)) {
+        return new IndigoSwitchAccessory(this, deviceURL, json);
     } else if (json.typeSupportsHVAC) {
         return new IndigoThermostatAccessory(this, deviceURL, json, this.thermostatsInCelsius);
     } else if (json.typeSupportsSpeedControl) {
@@ -413,6 +420,20 @@ IndigoAccessory.prototype.setOnState = function(onState, callback) {
         callback("Accessory does not support on/off");
     }
 };
+
+
+//
+// Indigo Switch Accessory
+//
+
+function IndigoSwitchAccessory(platform, deviceURL, json) {
+    IndigoAccessory.call(this, platform, deviceURL, json);
+
+    var s = this.addService(Service.Switch);
+    s.getCharacteristic(Characteristic.On)
+        .on('get', this.getOnState.bind(this))
+        .on('set', this.setOnState.bind(this));
+}
 
 
 //
