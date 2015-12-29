@@ -21,27 +21,27 @@ More details can be found in this [discussion thread](http://forums.indigodomo.c
 Configuration sample:
 
  ```
-	"platforms": [
-		{
-			"platform": "Indigo",
-			"name": "My Indigo Server",
-			"protocol": "http",
-			"host": "127.0.0.1",
-			"port": "8176",
-			"path": "",
-			"username": "myusername",
-			"password": "mypassword",
-			"includeActions": true,
-			"includeIds": [ "12345", "67890" ],
-			"excludeIds": [ "98765", "43210" ],
-			"treatAsSwitchIds": [ "13579", "24680" ],
-			"treatAsLockIds": [ "112233", "445566" ],
-        	"treatAsDoorIds": [ "224466", "664422" ],
-        	"treatAsGarageDoorIds": [ "223344", "556677" ],
-			"thermostatsInCelsius": false,
-			"accessoryNamePrefix": ""
-		}
-	]
+    "platforms": [
+        {
+            "platform": "Indigo",
+            "name": "My Indigo Server",
+            "protocol": "http",
+            "host": "127.0.0.1",
+            "port": "8176",
+            "path": "",
+            "username": "myusername",
+            "password": "mypassword",
+            "includeActions": true,
+            "includeIds": [ "12345", "67890" ],
+            "excludeIds": [ "98765", "43210" ],
+            "treatAsSwitchIds": [ "13579", "24680" ],
+            "treatAsLockIds": [ "112233", "445566" ],
+            "treatAsDoorIds": [ "224466", "664422" ],
+            "treatAsGarageDoorIds": [ "223344", "556677" ],
+            "thermostatsInCelsius": false,
+            "accessoryNamePrefix": ""
+        }
+    ]
 ```
 
 Fields: 
