@@ -22,6 +22,9 @@
 			"includeIds": [ "12345", "67890" ],
 			"excludeIds": [ "98765", "43210" ],
 			"treatAsSwitchIds": [ "13579", "24680" ],
+			"treatAsLockIds": [ "112233", "445566" ],
+        	"treatAsDoorIds": [ "224466", "664422" ],
+        	"treatAsGarageDoorIds": [ "223344", "556677" ],
 			"thermostatsInCelsius": false,
 			"accessoryNamePrefix": ""
 		}

@@ -2,6 +2,7 @@
 Indigo platform shim for HomeBridge
 Written by Mike Riccio (https://github.com/webdeck/homebridge-indigo)
 See http://www.indigodomo.com/ for more info on Indigo
+See http://forums.indigodomo.com/viewtopic.php?f=9&t=15008 for installation instructions
 
 Configuration example for your Homebridge config.json:
 
@@ -19,6 +20,9 @@ Configuration example for your Homebridge config.json:
         "includeIds": [ "12345", "67890" ],
         "excludeIds": [ "98765", "43210" ],
         "treatAsSwitchIds": [ "13579", "24680" ],
+        "treatAsLockIds": [ "112233", "445566" ],
+        "treatAsDoorIds": [ "224466", "664422" ],
+        "treatAsGarageDoorIds": [ "223344", "556677" ],
         "thermostatsInCelsius": false,
         "accessoryNamePrefix": ""
     }
@@ -37,6 +41,9 @@ Fields:
     "includeIds": Array of Indigo IDs to include (optional - if provided, only these Indigo IDs will map to HomeKit devices)
     "excludeIds": Array of Indigo IDs to exclude (optional - if provided, these Indigo IDs will not be mapped to HomeKit devices)
     "treatAsSwitchIds": Array of Indigo IDs to treat as switches (instead of lightbulbs) - devices must support on/off to qualify
+    "treatAsLockIds": Array of Indigo IDs to treat as locks (instead of lightbulbs) - devices must support on/off to qualify (on = locked)
+    "treatAsDoorIds": Array of Indigo IDs to treat as doors (instead of lightbulbs) - devices must support on/off to qualify (on = open)
+    "treatAsGarageDoorIds": Array of Indigo IDs to treat as garage door openers (instead of lightbulbs) - devices must support on/off to qualify (on = open)
     "thermostatsInCelsius": If true, thermostats in Indigo are reporting temperatures in celsius (optional, defaults to false)
     "accessoryNamePrefix": Prefix all accessory names with this string (optional, useful for testing)
 
@@ -62,6 +69,9 @@ module.exports = function(homebridge) {
 
     fixInheritance(IndigoAccessory, Accessory);
     fixInheritance(IndigoSwitchAccessory, IndigoAccessory);
+    fixInheritance(IndigoLockAccessory, IndigoAccessory);
+    fixInheritance(IndigoDoorAccessory, IndigoAccessory);
+    fixInheritance(IndigoGarageDoorAccessory, IndigoAccessory);
     fixInheritance(IndigoLightAccessory, IndigoAccessory);
     fixInheritance(IndigoFanAccessory, IndigoAccessory);
     fixInheritance(IndigoThermostatAccessory, IndigoAccessory);
@@ -123,6 +133,9 @@ function IndigoPlatform(log, config) {
     this.includeIds = config.includeIds;
     this.excludeIds = config.excludeIds;
     this.treatAsSwitchIds = config.treatAsSwitchIds;
+    this.treatAsLockIds = config.treatAsLockIds;
+    this.treatAsDoorIds = config.treatAsDoorIds;
+    this.treatAsGarageDoorIds = config.treatAsGarageDoorIds;
     this.thermostatsInCelsius = config.thermostatsInCelsius;
 
     if (config.accessoryNamePrefix) {
@@ -299,6 +312,15 @@ IndigoPlatform.prototype.createAccessoryFromJSON = function(deviceURL, json) {
     } else if (json.typeSupportsOnOff && this.treatAsSwitchIds &&
                (this.treatAsSwitchIds.indexOf(String(json.id)) >= 0)) {
         return new IndigoSwitchAccessory(this, deviceURL, json);
+    } else if (json.typeSupportsOnOff && this.treatAsLockIds &&
+               (this.treatAsLockIds.indexOf(String(json.id)) >= 0)) {
+        return new IndigoLockAccessory(this, deviceURL, json);
+    } else if (json.typeSupportsOnOff && this.treatAsDoorIds &&
+               (this.treatAsDoorIds.indexOf(String(json.id)) >= 0)) {
+        return new IndigoDoorAccessory(this, deviceURL, json);
+    } else if (json.typeSupportsOnOff && this.treatAsGarageDoorIds &&
+               (this.treatAsGarageDoorIds.indexOf(String(json.id)) >= 0)) {
+        return new IndigoGarageDoorAccessory(this, deviceURL, json);
     } else if (json.typeSupportsHVAC) {
         return new IndigoThermostatAccessory(this, deviceURL, json, this.thermostatsInCelsius);
     } else if (json.typeSupportsSpeedControl) {
@@ -434,6 +456,185 @@ function IndigoSwitchAccessory(platform, deviceURL, json) {
         .on('get', this.getOnState.bind(this))
         .on('set', this.setOnState.bind(this));
 }
+
+
+//
+// Indigo Lock Accessory
+//
+
+function IndigoLockAccessory(platform, deviceURL, json) {
+    IndigoAccessory.call(this, platform, deviceURL, json);
+
+    var s = this.addService(Service.LockMechanism);
+    s.getCharacteristic(Characteristic.LockCurrentState)
+        .on('get', this.getLockCurrentState.bind(this));
+
+    s.getCharacteristic(Characteristic.LockTargetState)
+        .on('get', this.getLockTargetState.bind(this))
+        .on('set', this.setLockTargetState.bind(this));
+}
+
+IndigoLockAccessory.prototype.getLockCurrentState = function(callback) {
+    if (this.typeSupportsOnOff) {
+        this.getStatus(
+            function(error) {
+                if (error) {
+                    callback(error);
+                } else {
+                    var lockState = (this.isOn) ? Characteristic.LockCurrentState.SECURED : Characteristic.LockCurrentState.UNSECURED;
+                    this.log("%s: getLockCurrentState() => %s", this.name, lockState);
+                    callback(undefined, lockState);
+                }
+            }.bind(this)
+        );
+    }
+};
+
+IndigoLockAccessory.prototype.getLockTargetState = function(callback) {
+    if (this.typeSupportsOnOff) {
+        this.getStatus(
+            function(error) {
+                if (error) {
+                    callback(error);
+                } else {
+                    var lockState = (this.isOn) ? Characteristic.LockTargetState.SECURED : Characteristic.LockTargetState.UNSECURED;
+                    this.log("%s: getLockTargetState() => %s", this.name, lockState);
+                    callback(undefined, lockState);
+                }
+            }.bind(this)
+        );
+    }
+};
+
+IndigoLockAccessory.prototype.setLockTargetState = function(lockState, callback) {
+    this.log("%s: setLockTargetState(%s)", this.name, lockState);
+    if (this.typeSupportsOnOff) {
+        this.updateStatus({ isOn: (lockState == Characteristic.LockTargetState.SECURED) ? 1 : 0 }, callback);
+    } else {
+        callback("Accessory does not support on/off");
+    }
+};
+
+
+//
+// Indigo Door Accessory
+//
+
+function IndigoDoorAccessory(platform, deviceURL, json) {
+    IndigoAccessory.call(this, platform, deviceURL, json);
+
+    var s = this.addService(Service.Door);
+    s.getCharacteristic(Characteristic.CurrentPosition)
+        .on('get', this.getPosition.bind(this));
+
+    s.getCharacteristic(Characteristic.PositionState)
+        .on('get', this.getPositionState.bind(this));
+
+    s.getCharacteristic(Characteristic.TargetPosition)
+        .on('get', this.getPosition.bind(this))
+        .on('set', this.setTargetPosition.bind(this));
+}
+
+IndigoDoorAccessory.prototype.getPosition = function(callback) {
+    if (this.typeSupportsOnOff) {
+        this.getStatus(
+            function(error) {
+                if (error) {
+                    callback(error);
+                } else {
+                    var position = (this.isOn) ? 100 : 0;
+                    this.log("%s: getPosition() => %s", this.name, position);
+                    callback(undefined, position);
+                }
+            }.bind(this)
+        );
+    }
+};
+
+IndigoDoorAccessory.prototype.getPositionState = function(callback) {
+    if (this.typeSupportsOnOff) {
+        this.log("%s: getPositionState() => %s", this.name, Characteristic.PositionState.STOPPED);
+        callback(undefined, Characteristic.PositionState.STOPPED);
+    }
+};
+
+
+IndigoDoorAccessory.prototype.setTargetPosition = function(position, callback) {
+    this.log("%s: setTargetPosition(%s)", this.name, position);
+    if (this.typeSupportsOnOff) {
+        this.updateStatus({ isOn: (position > 0) ? 1 : 0 }, callback);
+    } else {
+        callback("Accessory does not support on/off");
+    }
+};
+
+
+//
+// Indigo Garage Door Accessory
+//
+
+function IndigoGarageDoorAccessory(platform, deviceURL, json) {
+    IndigoAccessory.call(this, platform, deviceURL, json);
+
+    var s = this.addService(Service.GarageDoorOpener);
+    s.getCharacteristic(Characteristic.CurrentDoorState)
+        .on('get', this.getCurrentDoorState.bind(this));
+
+    s.getCharacteristic(Characteristic.TargetDoorState)
+        .on('get', this.getTargetDoorState.bind(this))
+        .on('set', this.setTargetDoorState.bind(this));
+
+    s.getCharacteristic(Characteristic.ObstructionDetected)
+        .on('get', this.getObstructionDetected.bind(this));
+}
+
+IndigoGarageDoorAccessory.prototype.getCurrentDoorState = function(callback) {
+    if (this.typeSupportsOnOff) {
+        this.getStatus(
+            function(error) {
+                if (error) {
+                    callback(error);
+                } else {
+                    var doorState = (this.isOn) ? Characteristic.CurrentDoorState.OPEN : Characteristic.CurrentDoorState.CLOSED;
+                    this.log("%s: getPosition() => %s", this.name, doorState);
+                    callback(undefined, doorState);
+                }
+            }.bind(this)
+        );
+    }
+};
+
+IndigoGarageDoorAccessory.prototype.getTargetDoorState = function(callback) {
+    if (this.typeSupportsOnOff) {
+        this.getStatus(
+            function(error) {
+                if (error) {
+                    callback(error);
+                } else {
+                    var doorState = (this.isOn) ? Characteristic.TargetDoorState.OPEN : Characteristic.TargetDoorState.CLOSED;
+                    this.log("%s: getPosition() => %s", this.name, doorState);
+                    callback(undefined, doorState);
+                }
+            }.bind(this)
+        );
+    }
+};
+
+IndigoGarageDoorAccessory.prototype.setTargetDoorState = function(doorState, callback) {
+    this.log("%s: setTargetPosition(%s)", this.name, doorState);
+    if (this.typeSupportsOnOff) {
+        this.updateStatus({ isOn: (doorState == Characteristic.TargetDoorState.OPEN) ? 1 : 0 }, callback);
+    } else {
+        callback("Accessory does not support on/off");
+    }
+};
+
+IndigoGarageDoorAccessory.prototype.getObstructionDetected = function(callback) {
+    if (this.typeSupportsOnOff) {
+        this.log("%s: getObstructionDetected() => %s", this.name, false);
+        callback(undefined, false);
+    }
+};
 
 
 //

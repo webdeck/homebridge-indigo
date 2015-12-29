@@ -14,6 +14,8 @@ Supports the following Indigo device types:
 2. Install this plugin using: npm install -g homebridge-indigo
 3. Update your configuration file. See sampleconfig.json in this repository for a sample. 
 
+More details can be found in this [discussion thread](http://forums.indigodomo.com/viewtopic.php?f=9&t=15008).
+
 # Configuration
 
 Configuration sample:
@@ -33,6 +35,9 @@ Configuration sample:
 			"includeIds": [ "12345", "67890" ],
 			"excludeIds": [ "98765", "43210" ],
 			"treatAsSwitchIds": [ "13579", "24680" ],
+			"treatAsLockIds": [ "112233", "445566" ],
+        	"treatAsDoorIds": [ "224466", "664422" ],
+        	"treatAsGarageDoorIds": [ "223344", "556677" ],
 			"thermostatsInCelsius": false,
 			"accessoryNamePrefix": ""
 		}
@@ -52,6 +57,9 @@ Fields:
 * "includeIds": Array of Indigo IDs to include (optional - if provided, only these Indigo IDs will map to HomeKit devices)
 * "excludeIds": Array of Indigo IDs to exclude (optional - if provided, these Indigo IDs will not be mapped to HomeKit devices)
 * "treatAsSwitchIds": Array of Indigo IDs to treat as switches (instead of lightbulbs) - devices must support on/off to qualify
+* "treatAsLockIds": Array of Indigo IDs to treat as locks (instead of lightbulbs) - devices must support on/off to qualify (on = locked)
+* "treatAsDoorIds": Array of Indigo IDs to treat as doors (instead of lightbulbs) - devices must support on/off to qualify (on = open)
+* "treatAsGarageDoorIds": Array of Indigo IDs to treat as garage door openers (instead of lightbulbs) - devices must support on/off to qualify (on = open)
 * "thermostatsInCelsius": If true, thermostats in Indigo are reporting temperatures in celsius (optional, defaults to false)
 * "accessoryNamePrefix": Prefix all accessory names with this string (optional, useful for testing)
 
