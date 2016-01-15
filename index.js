@@ -59,6 +59,7 @@ will NOT be exposed to HomeKit, because Indigo excludes those devices from its R
 var request = require("request");
 var async = require("async");
 var inherits = require('util').inherits;
+var parser = require("xml2json");
 var Service, Characteristic, Accessory, uuid;
 
 module.exports = function(homebridge) {
@@ -93,6 +94,10 @@ function fixInheritance(subclass, superclass) {
 
 function IndigoPlatform(log, config) {
     this.log = log;
+
+    if (config.version) {
+        this.version = config.version;
+    }
 
     var protocol = "http";
     if (config.protocol) {
@@ -149,9 +154,16 @@ function IndigoPlatform(log, config) {
 IndigoPlatform.prototype.accessories = function(callback) {
     this.foundAccessories = [];
 
-    var requestURLs = [ this.path + "/devices.json/" ];
-    if (this.includeActions) {
-        requestURLs.push(this.path + "/actions.json/");
+    if (this.version == '5') {
+        var requestURLs = [ this.path + "/devices.xml/" ];
+        if (this.includeActions) {
+            requestURLs.push(this.path + "/actions.xml/");
+        }
+    } else {
+        var requestURLs = [ this.path + "/devices.json/" ];
+        if (this.includeActions) {
+            requestURLs.push(this.path + "/actions.json/");
+	}
     }
 
     async.eachSeries(requestURLs,
@@ -291,6 +303,32 @@ IndigoPlatform.prototype.indigoRequestJSON = function(path, method, qs, callback
                 }
                 var json;
                 try {
+                    if (this.version == '5') {
+                        // see toJson options here: https://github.com/buglabs/node-xml2json
+                        var json = parser.toJson(body, {coerce: true, sanitize: false});
+
+                        // replace the "$t" (toJson does this as tag for link text) with "name"
+                        // replace the "href" tag with "restURL"
+                        json = json.replace(/\$t/g, 'name');
+                        json = json.replace(/"href":/g, '"restURL":');
+
+                        // the JSON returned by toJson is more complex than needed here
+                        // so take off the outer layer
+
+                        // here we handle devices.xml and actions.xml pieces
+                        json = json.replace(/^{"devices":{"device":/, '');
+                        json = json.replace(/^{"actions":{"action":/, '');
+                        json = json.replace(/]}}$/, ']');
+
+                        // we need to insert an appropriate "restParent"
+                        json = json.replace(/^{"device":{/, '{"restParent":"devices",');
+                        json = json.replace(/{"action":{/, '{"restParent":"actions",');
+
+                        // cleanup any trailing brace
+                        json = json.replace(/}$/, '');
+
+                        body = json;
+                    }
                     var json = JSON.parse(body);
                 } catch (e) {
                     var msg2 = "Error parsing Indigo response for " + path +
