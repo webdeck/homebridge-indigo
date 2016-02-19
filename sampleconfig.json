@@ -19,6 +19,7 @@
             "username": "myusername",
             "password": "mypassword",
             "includeActions": true,
+            "consolidateDevices": true,
             "includeIds": [ "12345", "67890" ],
             "excludeIds": [ "98765", "43210" ],
             "treatAsSwitchIds": [ "13579", "24680" ],
