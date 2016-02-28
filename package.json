@@ -13,7 +13,7 @@
   "bugs": {
     "url": "https://github.com/webdeck/homebridge-indigo/issues"
   },
-  "homepage": "https://github.com/rodtoll/homebridge-indigo",
+  "homepage": "https://github.com/webdeck/homebridge-indigo",
   "preferGlobal": true,
   "keywords": [
     "homebridge-plugin",
@@ -29,6 +29,7 @@
   "dependencies": {
     "async": "^1.4.2",
     "inherits": "^2.0.1",
-    "request": "2.49.x"
+    "request": "2.49.x",
+    "xml2json": "^0.9.0"
   }
 }
