@@ -451,7 +451,7 @@ IndigoAccessory.prototype.setOnState = function(onState, callback) {
 function IndigoSwitchAccessory(platform, deviceURL, json) {
     IndigoAccessory.call(this, platform, deviceURL, json);
 
-    var s = this.addService(Service.Switch);
+    var s = this.addService(new Service.Switch(this.name));
     s.getCharacteristic(Characteristic.On)
         .on('get', this.getOnState.bind(this))
         .on('set', this.setOnState.bind(this));
@@ -465,7 +465,7 @@ function IndigoSwitchAccessory(platform, deviceURL, json) {
 function IndigoLockAccessory(platform, deviceURL, json) {
     IndigoAccessory.call(this, platform, deviceURL, json);
 
-    var s = this.addService(Service.LockMechanism);
+    var s = this.addService(new Service.LockMechanism(this.name));
     s.getCharacteristic(Characteristic.LockCurrentState)
         .on('get', this.getLockCurrentState.bind(this));
 
@@ -523,7 +523,7 @@ IndigoLockAccessory.prototype.setLockTargetState = function(lockState, callback)
 function IndigoDoorAccessory(platform, deviceURL, json) {
     IndigoAccessory.call(this, platform, deviceURL, json);
 
-    var s = this.addService(Service.Door);
+    var s = this.addService(new Service.Door(this.name));
     s.getCharacteristic(Characteristic.CurrentPosition)
         .on('get', this.getPosition.bind(this));
 
@@ -576,7 +576,7 @@ IndigoDoorAccessory.prototype.setTargetPosition = function(position, callback) {
 function IndigoGarageDoorAccessory(platform, deviceURL, json) {
     IndigoAccessory.call(this, platform, deviceURL, json);
 
-    var s = this.addService(Service.GarageDoorOpener);
+    var s = this.addService(new Service.GarageDoorOpener(this.name));
     s.getCharacteristic(Characteristic.CurrentDoorState)
         .on('get', this.getCurrentDoorState.bind(this));
 
@@ -644,7 +644,7 @@ IndigoGarageDoorAccessory.prototype.getObstructionDetected = function(callback) 
 function IndigoLightAccessory(platform, deviceURL, json) {
     IndigoAccessory.call(this, platform, deviceURL, json);
 
-    var s = this.addService(Service.Lightbulb);
+    var s = this.addService(new Service.Lightbulb(this.name));
     s.getCharacteristic(Characteristic.On)
         .on('get', this.getOnState.bind(this))
         .on('set', this.setOnState.bind(this));
@@ -680,7 +680,7 @@ IndigoLightAccessory.prototype.setBrightness = function(brightness, callback) {
 function IndigoFanAccessory(platform, deviceURL, json) {
     IndigoAccessory.call(this, platform, deviceURL, json);
 
-    var s = this.addService(Service.Fan);
+    var s = this.addService(new Service.Fan(this.name));
     s.getCharacteristic(Characteristic.On)
         .on('get', this.getOnState.bind(this))
         .on('set', this.setOnState.bind(this));
@@ -738,7 +738,7 @@ function IndigoThermostatAccessory(platform, deviceURL, json, thermostatsInCelsi
         Characteristic.TemperatureDisplayUnits.CELSIUS :
         Characteristic.TemperatureDisplayUnits.FAHRENHEIT;
 
-    var s = this.addService(Service.Thermostat);
+    var s = this.addService(new Service.Thermostat(this.name));
     s.getCharacteristic(Characteristic.CurrentHeatingCoolingState)
         .on('get', this.getCurrentHeatingCooling.bind(this));
 
@@ -968,7 +968,7 @@ IndigoThermostatAccessory.prototype.getCurrentRelativeHumidity = function(callba
 function IndigoActionAccessory(platform, deviceURL, json) {
     IndigoAccessory.call(this, platform, deviceURL, json);
 
-    this.addService(Service.Switch)
+    this.addService(new Service.Switch(this.name))
         .getCharacteristic(Characteristic.On)
         .on('get', this.getActionState.bind(this))
         .on('set', this.executeAction.bind(this));
