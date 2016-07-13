@@ -33,4 +33,5 @@ node_modules
 # HomeBridge
 config.json
 config.test.json
+accessories/
 persist/

@@ -25,6 +25,8 @@
             "treatAsLockIds": [ "112233", "445566" ],
             "treatAsDoorIds": [ "224466", "664422" ],
             "treatAsGarageDoorIds": [ "223344", "556677" ],
+            "treatAsWindowIds": [ "123123", "456456" ],
+            "treatAsWindowCoveringIds": [ "345345", "678678" ],
             "thermostatsInCelsius": false,
             "accessoryNamePrefix": ""
         }

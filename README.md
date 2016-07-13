@@ -38,6 +38,8 @@ Configuration sample:
             "treatAsLockIds": [ "112233", "445566" ],
             "treatAsDoorIds": [ "224466", "664422" ],
             "treatAsGarageDoorIds": [ "223344", "556677" ],
+            "treatAsWindowIds": [ "123123", "456456" ],
+            "treatAsWindowCoveringIds": [ "345345", "678678" ],
             "thermostatsInCelsius": false,
             "accessoryNamePrefix": ""
         }
@@ -60,6 +62,8 @@ Fields:
 * "treatAsLockIds": Array of Indigo IDs to treat as locks (instead of lightbulbs) - devices must support on/off to qualify (on = locked)
 * "treatAsDoorIds": Array of Indigo IDs to treat as doors (instead of lightbulbs) - devices must support on/off to qualify (on = open)
 * "treatAsGarageDoorIds": Array of Indigo IDs to treat as garage door openers (instead of lightbulbs) - devices must support on/off to qualify (on = open)
+* "treatAsWindowIds": Array of Indigo IDs to treat as windows (instead of lightbulbs) - devices must support on/off to qualify (on = open)
+* "treatAsWindowCoveringIds": Array of Indigo IDs to treat as window coverings (instead of lightbulbs) - devices must support on/off to qualify (on = open)
 * "thermostatsInCelsius": If true, thermostats in Indigo are reporting temperatures in celsius (optional, defaults to false)
 * "accessoryNamePrefix": Prefix all accessory names with this string (optional, useful for testing)
 

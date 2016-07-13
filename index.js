@@ -23,6 +23,8 @@ Configuration example for your Homebridge config.json:
         "treatAsLockIds": [ "112233", "445566" ],
         "treatAsDoorIds": [ "224466", "664422" ],
         "treatAsGarageDoorIds": [ "223344", "556677" ],
+        "treatAsWindowIds": [ "123123", "456456" ],
+        "treatAsWindowCoveringIds": [ "345345", "678678" ],
         "thermostatsInCelsius": false,
         "accessoryNamePrefix": ""
     }
@@ -44,6 +46,8 @@ Fields:
     "treatAsLockIds": Array of Indigo IDs to treat as locks (instead of lightbulbs) - devices must support on/off to qualify (on = locked)
     "treatAsDoorIds": Array of Indigo IDs to treat as doors (instead of lightbulbs) - devices must support on/off to qualify (on = open)
     "treatAsGarageDoorIds": Array of Indigo IDs to treat as garage door openers (instead of lightbulbs) - devices must support on/off to qualify (on = open)
+    "treatAsWindowIds": Array of Indigo IDs to treat as windows (instead of lightbulbs) - devices must support on/off to qualify (on = open)
+    "treatAsWindowCoveringIds": Array of Indigo IDs to treat as window coverings (instead of lightbulbs) - devices must support on/off to qualify (on = open)
     "thermostatsInCelsius": If true, thermostats in Indigo are reporting temperatures in celsius (optional, defaults to false)
     "accessoryNamePrefix": Prefix all accessory names with this string (optional, useful for testing)
 
@@ -70,7 +74,10 @@ module.exports = function(homebridge) {
     fixInheritance(IndigoAccessory, Accessory);
     fixInheritance(IndigoSwitchAccessory, IndigoAccessory);
     fixInheritance(IndigoLockAccessory, IndigoAccessory);
-    fixInheritance(IndigoDoorAccessory, IndigoAccessory);
+    fixInheritance(IndigoPositionAccessory, IndigoAccessory);
+    fixInheritance(IndigoDoorAccessory, IndigoPositionAccessory);
+    fixInheritance(IndigoWindowAccessory, IndigoPositionAccessory);
+    fixInheritance(IndigoWindowCoveringAccessory, IndigoPositionAccessory);
     fixInheritance(IndigoGarageDoorAccessory, IndigoAccessory);
     fixInheritance(IndigoLightAccessory, IndigoAccessory);
     fixInheritance(IndigoFanAccessory, IndigoAccessory);
@@ -136,6 +143,8 @@ function IndigoPlatform(log, config) {
     this.treatAsLockIds = config.treatAsLockIds;
     this.treatAsDoorIds = config.treatAsDoorIds;
     this.treatAsGarageDoorIds = config.treatAsGarageDoorIds;
+    this.treatAsWindowIds = config.treatAsWindowIds;
+    this.treatAsWindowCoveringIds = config.treatAsWindowCoveringIds;
     this.thermostatsInCelsius = config.thermostatsInCelsius;
 
     if (config.accessoryNamePrefix) {
@@ -321,6 +330,12 @@ IndigoPlatform.prototype.createAccessoryFromJSON = function(deviceURL, json) {
     } else if (json.typeSupportsOnOff && this.treatAsGarageDoorIds &&
                (this.treatAsGarageDoorIds.indexOf(String(json.id)) >= 0)) {
         return new IndigoGarageDoorAccessory(this, deviceURL, json);
+    } else if (json.typeSupportsOnOff && this.treatAsWindowIds &&
+               (this.treatAsWindowIds.indexOf(String(json.id)) >= 0)) {
+        return new IndigoWindowAccessory(this, deviceURL, json);
+    } else if (json.typeSupportsOnOff && this.treatAsWindowCoveringIds &&
+               (this.treatAsWindowCoveringIds.indexOf(String(json.id)) >= 0)) {
+        return new IndigoWindowCoveringAccessory(this, deviceURL, json);
     } else if (json.typeSupportsHVAC) {
         return new IndigoThermostatAccessory(this, deviceURL, json, this.thermostatsInCelsius);
     } else if (json.typeSupportsSpeedControl) {
@@ -517,13 +532,14 @@ IndigoLockAccessory.prototype.setLockTargetState = function(lockState, callback)
 
 
 //
-// Indigo Door Accessory
+// Indigo Position Accessory (Door, Window, or Window Covering)
 //
 
-function IndigoDoorAccessory(platform, deviceURL, json) {
+function IndigoPositionAccessory(platform, deviceURL, json, service) {
     IndigoAccessory.call(this, platform, deviceURL, json);
 
-    var s = this.addService(new Service.Door(this.name));
+    var s = this.addService(service);
+    this.service = s;
     s.getCharacteristic(Characteristic.CurrentPosition)
         .on('get', this.getPosition.bind(this));
 
@@ -535,7 +551,7 @@ function IndigoDoorAccessory(platform, deviceURL, json) {
         .on('set', this.setTargetPosition.bind(this));
 }
 
-IndigoDoorAccessory.prototype.getPosition = function(callback) {
+IndigoPositionAccessory.prototype.getPosition = function(callback) {
     if (this.typeSupportsOnOff) {
         this.getStatus(
             function(error) {
@@ -551,7 +567,7 @@ IndigoDoorAccessory.prototype.getPosition = function(callback) {
     }
 };
 
-IndigoDoorAccessory.prototype.getPositionState = function(callback) {
+IndigoPositionAccessory.prototype.getPositionState = function(callback) {
     if (this.typeSupportsOnOff) {
         this.log("%s: getPositionState() => %s", this.name, Characteristic.PositionState.STOPPED);
         callback(undefined, Characteristic.PositionState.STOPPED);
@@ -559,14 +575,49 @@ IndigoDoorAccessory.prototype.getPositionState = function(callback) {
 };
 
 
-IndigoDoorAccessory.prototype.setTargetPosition = function(position, callback) {
+IndigoPositionAccessory.prototype.setTargetPosition = function(position, callback) {
     this.log("%s: setTargetPosition(%s)", this.name, position);
     if (this.typeSupportsOnOff) {
         this.updateStatus({ isOn: (position > 0) ? 1 : 0 }, callback);
+        // Update current state to match target state
+        setTimeout(
+            function() {
+                this.service
+                    .getCharacteristic(Characteristic.CurrentPosition)
+                    .setValue(position, undefined, 'fromSetValue');
+            }.bind(this),
+        1000);
     } else {
         callback("Accessory does not support on/off");
     }
 };
+
+
+//
+// Indigo Door Accessory
+//
+
+function IndigoDoorAccessory(platform, deviceURL, json) {
+    IndigoPositionAccessory.call(this, platform, deviceURL, json, new Service.Door(this.name));
+}
+
+
+//
+// Indigo Window Accessory
+//
+
+function IndigoWindowAccessory(platform, deviceURL, json) {
+    IndigoPositionAccessory.call(this, platform, deviceURL, json, new Service.Window(this.name));
+}
+
+
+//
+// Indigo Window Covering Accessory
+//
+
+function IndigoWindowCoveringAccessory(platform, deviceURL, json) {
+    IndigoPositionAccessory.call(this, platform, deviceURL, json, new Service.WindowCovering(this.name));
+}
 
 
 //
@@ -624,6 +675,16 @@ IndigoGarageDoorAccessory.prototype.setTargetDoorState = function(doorState, cal
     this.log("%s: setTargetPosition(%s)", this.name, doorState);
     if (this.typeSupportsOnOff) {
         this.updateStatus({ isOn: (doorState == Characteristic.TargetDoorState.OPEN) ? 1 : 0 }, callback);
+        // Update current state to match target state
+        setTimeout(
+            function() {
+                this.getService(Service.GarageDoorOpener)
+                    .getCharacteristic(Characteristic.CurrentDoorState)
+                    .setValue((doorState == Characteristic.TargetDoorState.OPEN) ?
+                                Characteristic.CurrentDoorState.OPEN : Characteristic.CurrentDoorState.CLOSED,
+                                undefined, 'fromSetValue');
+            }.bind(this),
+        1000);
     } else {
         callback("Accessory does not support on/off");
     }
