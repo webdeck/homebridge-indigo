@@ -525,6 +525,16 @@ IndigoLockAccessory.prototype.setLockTargetState = function(lockState, callback)
     this.log("%s: setLockTargetState(%s)", this.name, lockState);
     if (this.typeSupportsOnOff) {
         this.updateStatus({ isOn: (lockState == Characteristic.LockTargetState.SECURED) ? 1 : 0 }, callback);
+        // Update current state to match target state
+        setTimeout(
+            function() {
+                this.getService(Service.LockMechanism)
+                    .getCharacteristic(Characteristic.LockCurrentState)
+                    .setValue((lockState == Characteristic.LockTargetState.SECURED) ?
+                                Characteristic.LockCurrentState.SECURED : Characteristic.LockCurrentState.UNSECURED,
+                                undefined, 'fromSetValue');
+            }.bind(this),
+        1000);
     } else {
         callback("Accessory does not support on/off");
     }
