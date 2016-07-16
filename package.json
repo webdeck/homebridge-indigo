@@ -1,7 +1,7 @@
 {
   "name": "homebridge-indigo",
   "description": "Indigo plugin for homebridge: https://github.com/nfarina/homebridge",
-  "version": "0.2.14",
+  "version": "0.2.15",
   "repository": {
     "type": "git",
     "url": "https://github.com/webdeck/homebridge-indigo.git"

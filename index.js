@@ -562,13 +562,16 @@ function IndigoPositionAccessory(platform, deviceURL, json, service) {
 }
 
 IndigoPositionAccessory.prototype.getPosition = function(callback) {
-    if (this.typeSupportsOnOff) {
+    if (this.typeSupportsOnOff  || this.typeSupportsDim) {
         this.getStatus(
             function(error) {
                 if (error) {
                     callback(error);
                 } else {
                     var position = (this.isOn) ? 100 : 0;
+                    if (this.typeSupportsDim) {
+                        position = this.brightness;
+                    }
                     this.log("%s: getPosition() => %s", this.name, position);
                     callback(undefined, position);
                 }
@@ -587,8 +590,12 @@ IndigoPositionAccessory.prototype.getPositionState = function(callback) {
 
 IndigoPositionAccessory.prototype.setTargetPosition = function(position, callback) {
     this.log("%s: setTargetPosition(%s)", this.name, position);
-    if (this.typeSupportsOnOff) {
-        this.updateStatus({ isOn: (position > 0) ? 1 : 0 }, callback);
+    if (this.typeSupportsOnOff || this.typeSupportsDim) {
+        if (this.typeSupportsDim) {
+            this.updateStatus({ brightness: position }, callback);
+        } else {
+            this.updateStatus({ isOn: (position > 0) ? 1 : 0 }, callback);
+        }
         // Update current state to match target state
         setTimeout(
             function() {
@@ -598,7 +605,7 @@ IndigoPositionAccessory.prototype.setTargetPosition = function(position, callbac
             }.bind(this),
         1000);
     } else {
-        callback("Accessory does not support on/off");
+        callback("Accessory does not support on/off or dim");
     }
 };
 
