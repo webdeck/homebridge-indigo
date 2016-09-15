@@ -101,6 +101,14 @@ function fixInheritance(subclass, superclass) {
 function IndigoPlatform(log, config) {
     this.log = log;
 
+    // We use a queue to serialize all the requests to Indigo
+    this.requestQueue = async.queue(
+        function(options, callback) {
+            this.log("Indigo request: %s", options.url);
+            request(options, callback);
+        }.bind(this)
+    );
+
     var protocol = "http";
     if (config.protocol) {
         protocol = config.protocol;
@@ -281,8 +289,7 @@ IndigoPlatform.prototype.indigoRequest = function(path, method, qs, callback) {
         options.qs = qs;
     }
 
-    this.log("Indigo request: %s", this.baseURL + path);
-    request(options, callback);
+    this.requestQueue.push(options, callback);
 };
 
 // Invokes callback(error, json) with JSON object returned by HTTP request
