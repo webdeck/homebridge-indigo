@@ -32,6 +32,7 @@ Configuration sample:
             "username": "myusername",
             "password": "mypassword",
             "includeActions": true,
+            "consolidateDevices": true,
             "includeIds": [ "12345", "67890" ],
             "excludeIds": [ "98765", "43210" ],
             "treatAsSwitchIds": [ "13579", "24680" ],
@@ -56,6 +57,7 @@ Fields:
 * "username": Username to log into Indigo web server, if applicable (optional)
 * "password": Password to log into Indigo web server, if applicable (optional)
 * "includeActions": If true, creates HomeKit switches for your actions (optional, defaults to false)
+* "consolidateDevices": If true, devices with the same device address will be seen in HomeKit as one device with multiple services.
 * "includeIds": Array of Indigo IDs to include (optional - if provided, only these Indigo IDs will map to HomeKit devices)
 * "excludeIds": Array of Indigo IDs to exclude (optional - if provided, these Indigo IDs will not be mapped to HomeKit devices)
 * "treatAsSwitchIds": Array of Indigo IDs to treat as switches (instead of lightbulbs) - devices must support on/off to qualify
@@ -74,6 +76,8 @@ expose everything, then omit both of these keys from your configuration.
 
 Also note that any Indigo devices or actions that have Remote Display unchecked in Indigo
 will NOT be exposed to HomeKit, because Indigo excludes those devices from its RESTful API.
+
+The consolidateDevices option is useful in situations such as with a FanLinc, where Indigo separates the fan controls and light controls each into their own separate device even though there is only one physical device.  With this option set to true HomeKit will show these controls under one device to reflect that.
 
 HomeKit limits bridges to 100 devices, so if you have more than 99 Indigo
 devices (and action groups, if you're including them), then you will want

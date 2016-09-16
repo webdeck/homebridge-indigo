@@ -17,6 +17,7 @@ Configuration example for your Homebridge config.json:
         "username": "myusername",
         "password": "mypassword",
         "includeActions": true,
+        "consolidateDevices": true,
         "includeIds": [ "12345", "67890" ],
         "excludeIds": [ "98765", "43210" ],
         "treatAsSwitchIds": [ "13579", "24680" ],
@@ -40,6 +41,7 @@ Fields:
     "username": Username to log into Indigo web server, if applicable (optional)
     "password": Password to log into Indigo web server, if applicable (optional)
     "includeActions": If true, creates HomeKit switches for your actions (optional, defaults to false)
+    "consolidateDevices": If true, devices with the same device address will be seen in HomeKit as one accessory with multiple services (optional, defaults to false)
     "includeIds": Array of Indigo IDs to include (optional - if provided, only these Indigo IDs will map to HomeKit devices)
     "excludeIds": Array of Indigo IDs to exclude (optional - if provided, these Indigo IDs will not be mapped to HomeKit devices)
     "treatAsSwitchIds": Array of Indigo IDs to treat as switches (instead of lightbulbs) - devices must support on/off to qualify
@@ -245,7 +247,27 @@ IndigoPlatform.prototype.addAccessory = function(item, callback) {
                 if (this.includeItemId(json.id)) {
                     var accessory = this.createAccessoryFromJSON(item.restURL, json);
                     if (accessory) {
-                        this.foundAccessories.push(accessory);
+                        var deviceLinked = false;
+                    	
+                    	if (this.consolidateDevices) {
+							for (var key in this.foundAccessories) {
+								if (this.foundAccessories.hasOwnProperty(key)) {
+									it = this.foundAccessories[key];
+							
+									if (accessory.addressStr != "unknown" && accessory.addressStr === it.addressStr) {
+										this.log("Consolidating: " + accessory.name + " Link to: " + it.name);
+										it.linkedDevices.push(accessory);
+										var deviceLinked = true;
+							
+										break;
+									}
+								}
+							}
+						}
+						
+						if (deviceLinked === false) {
+							this.foundAccessories.push(accessory);
+						}
                     } else {
                         this.log("Ignoring unknown accessory type %s", json.type);
                     }
@@ -363,6 +385,7 @@ function IndigoAccessory(platform, deviceURL, json) {
     this.platform = platform;
     this.log = platform.log;
     this.deviceURL = deviceURL;
+    this.linkedDevices = [];
 
     this.updateFromJSON(json);
 
@@ -382,7 +405,19 @@ function IndigoAccessory(platform, deviceURL, json) {
 }
 
 IndigoAccessory.prototype.getServices = function() {
-    return this.services;
+    var services = this.services;
+	
+	if (this.linkedDevices.length > 0) {
+		for (var key in this.linkedDevices) {
+			if (this.linkedDevices.hasOwnProperty(key)) {
+				it = this.linkedDevices[key];
+				
+				services = services.concat(it.getServices().slice(1));
+			}
+		}
+	}
+	
+    return services;
 };
 
 // Updates object fields with values from json
