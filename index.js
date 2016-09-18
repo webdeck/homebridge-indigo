@@ -938,7 +938,7 @@ IndigoGarageDoorAccessory.prototype.setTargetDoorState = function(doorState, cal
                     .getCharacteristic(Characteristic.CurrentDoorState)
                     .setValue((doorState == Characteristic.TargetDoorState.OPEN) ?
                                 Characteristic.CurrentDoorState.OPEN : Characteristic.CurrentDoorState.CLOSED,
-                                undefined, 'fromSetValue');
+                                undefined, IndigoAccessory.REFRESH_CONTEXT);
             }.bind(this),
         1000);
     } else {
