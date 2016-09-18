@@ -101,6 +101,9 @@ function fixInheritance(subclass, superclass) {
 }
 
 
+// Initialize the homebridge platform
+// log: the logger
+// config: the contents of the platform's section of config.json
 function IndigoPlatform(log, config) {
     this.log = log;
 
@@ -115,6 +118,7 @@ function IndigoPlatform(log, config) {
     this.foundAccessories = [];
     this.accessoryMap = new Map();
 
+    // Parse all the configuration options
     var protocol = "http";
     if (config.protocol) {
         protocol = config.protocol;
@@ -166,7 +170,8 @@ function IndigoPlatform(log, config) {
     } else {
         this.accessoryNamePrefix = "";
     }
-    
+
+    // Start the accessory update listener, if configured
     if (config.listenPort) {
         this.app = express();
         this.app.get("/devices/:id", this.updateAccessory.bind(this));
@@ -178,7 +183,7 @@ function IndigoPlatform(log, config) {
     }
 }
 
-// Invokes callback(accessories[])
+// Invokes callback(accessories[]) with all of the discovered accessories for this platform
 IndigoPlatform.prototype.accessories = function(callback) {
     var requestURLs = [ this.path + "/devices.json/" ];
     if (this.includeActions) {
@@ -212,7 +217,10 @@ IndigoPlatform.prototype.accessories = function(callback) {
     );
 };
 
-// Invokes callback(error), error is undefined if no error occurred
+// Discovers all of the accessories under a root Indigo RESTful API node (e.g. devices, actions, etc.)
+// Populates this.foundAccessories and this.accessoryMap
+// requestURL: the Indigo RESTful API URL to query
+// callback: invokes callback(error) when all accessories have been discovered; error is undefined if no error occurred
 IndigoPlatform.prototype.discoverAccessories = function(requestURL, callback) {
     this.indigoRequestJSON(requestURL, "GET", null,
         function(error, json) {
@@ -243,8 +251,12 @@ IndigoPlatform.prototype.discoverAccessories = function(requestURL, callback) {
     );
 };
 
-// Invokes callback(error), error is always undefined as we want to ignore errors
+// Adds an IndigoAccessory object to this.foundAccessories and this.accessoryMap
+// item: JSON describing the device, as returned by the root of the Indigo RESTful API (e.g. /devices.json/)
+// callback: invokes callback(error), error is always undefined as we want to ignore errors
+// Note: does not create and add the IndigoAccessory if it is an unknoen type or is excluded by the config
 IndigoPlatform.prototype.addAccessory = function(item, callback) {
+    // Get the details of the item, using its provided restURL
     this.indigoRequestJSON(item.restURL, "GET", null,
         function(error, json) {
             if (error) {
@@ -252,6 +264,7 @@ IndigoPlatform.prototype.addAccessory = function(item, callback) {
                 callback();
             }
             else {
+                // Actions are missing a type field
                 if (json.restParent == "actions") {
                     json.type = "Action";
                 }
@@ -275,6 +288,7 @@ IndigoPlatform.prototype.addAccessory = function(item, callback) {
 };
 
 // Returns true if the item id should be included in the accessory list
+// id: the Indigo ID of the device/action
 IndigoPlatform.prototype.includeItemId = function(id) {
     if (this.includeIds && (this.includeIds.indexOf(String(id)) < 0)) {
         return false;
@@ -287,7 +301,11 @@ IndigoPlatform.prototype.includeItemId = function(id) {
     return true;
 };
 
-// Invokes callback(error, response, body) with result of HTTP request
+// Makes a request to Indigo using the RESTful API
+// path: the path of the request, relative to the base URL in the configuration, starting with a /
+// method: the type of HTTP request to make (e.g. GET, POST, etc.)
+// qs: the query string to include in the request (optional)
+// callback: invokes callback(error, response, body) with the result of the HTTP request
 IndigoPlatform.prototype.indigoRequest = function(path, method, qs, callback) {
     // seems to be a bug in request that if followRedirect is false and auth is
     // required, it crashes because redirects is missing, so I include it here
@@ -304,10 +322,17 @@ IndigoPlatform.prototype.indigoRequest = function(path, method, qs, callback) {
         options.qs = qs;
     }
 
+    // All requests to Indigo are serialized, so that there is no more than one outstanding request at a time
     this.requestQueue.push(options, callback);
 };
 
-// Invokes callback(error, json) with JSON object returned by HTTP request
+// Makes a request to Indigo using the RESTful API and parses the JSON response
+// path: the path of the request, relative to the base URL in the configuration, starting with a /
+// method: the type of HTTP request to make (e.g. GET, POST, etc.)
+// qs: the query string to include in the request (optional)
+// callback: invokes callback(error, json) with the parsed JSON object returned by the HTTP request
+// jsonFixer: optional function which manipulates the HTTP response body before attempting to parse the JSON
+//            this is used to work around bugs in Indigo's RESTful API responses that cause invalid JSON
 IndigoPlatform.prototype.indigoRequestJSON = function(path, method, qs, callback, jsonFixer) {
     this.indigoRequest(path, method, qs,
         function(error, response, body) {
@@ -337,6 +362,8 @@ IndigoPlatform.prototype.indigoRequestJSON = function(path, method, qs, callback
 };
 
 // Returns subclass of IndigoAccessory based on json, or null if unsupported type
+// deviceURL: the path of the RESTful call for this device, relative to the base URL in the configuration, starting with a /
+// json: the json that describes this device
 IndigoPlatform.prototype.createAccessoryFromJSON = function(deviceURL, json) {
     if (json.restParent == "actions") {
         return new IndigoActionAccessory(this, deviceURL, json);
@@ -370,6 +397,8 @@ IndigoPlatform.prototype.createAccessoryFromJSON = function(deviceURL, json) {
 };
 
 // Invoked by a request on listenPort of /devices/:id
+// If the ID corresponds to an accessory, invokes refresh(callback) on that accessory
+// Sends a 200 HTTP response if successful, a 404 if the ID is not found, or a 500 if there is an error
 IndigoPlatform.prototype.updateAccessory = function(request, response) {
     var id = String(request.params.id);
     this.log("Got update request for device ID %s", id);
@@ -393,7 +422,10 @@ IndigoPlatform.prototype.updateAccessory = function(request, response) {
 //
 // Generic Indigo Accessory
 //
-
+// platform: the HomeKit platform
+// deviceURL: the path of the RESTful call for this device, relative to the base URL in the configuration, starting with a /
+// json: the json that describes this device
+//
 function IndigoAccessory(platform, deviceURL, json) {
     this.platform = platform;
     this.log = platform.log;
@@ -416,12 +448,18 @@ function IndigoAccessory(platform, deviceURL, json) {
     }
 }
 
+// A set context that indicates this is from an update made by this plugin, so do not call the Indigo RESTful API with a put request
+IndigoAccessory.REFRESH_CONTEXT = 'refresh';
+
+
+// Returns the HomeKit services that this accessory supports
 IndigoAccessory.prototype.getServices = function() {
     return this.services;
 };
 
-// Updates object fields with values from json
-// updateCallback is an optional function that is invoked with the name of each property that has changed
+// Updates the Accessory's properties with values from JSON from the Indigo RESTful API
+// json: JSON object from the Indigo RESTful API
+// updateCallback: optional, invokes updateCallback(propertyName, propertyValue) for each property that has changed value
 IndigoAccessory.prototype.updateFromJSON = function(json, updateCallback) {
     for (var prop in json) {
         if (prop != "name" && json.hasOwnProperty(prop)) {
@@ -434,13 +472,15 @@ IndigoAccessory.prototype.updateFromJSON = function(json, updateCallback) {
         }
     }
 
+    // Allows us to change the name of accessories - useful for testing
     if (json.name !== undefined) {
         this.name = this.platform.accessoryNamePrefix + String(json.name);
     }
 };
 
-// Invokes callback(error), error is undefined if no error occurred
-// updateCallback is an optional function that is invoked with the name of each property that has changed
+// Calls the Indigo RESTful API to get the latest state for this Accessory, and updates the Accessory's properties to match
+// callback: invokes callback(error), error is undefined if no error occurred
+// updateCallback: optional, invokes updateCallback(propertyName, propertyValue) for each property that has changed value
 IndigoAccessory.prototype.getStatus = function(callback, updateCallback) {
     this.platform.indigoRequestJSON(this.deviceURL, "GET", null,
         function(error, json) {
@@ -454,21 +494,25 @@ IndigoAccessory.prototype.getStatus = function(callback, updateCallback) {
     );
 };
 
-// Invokes callback(error), error is undefined if no error occurred
-IndigoAccessory.prototype.updateStatus = function(qs, callback) {
+// Calls the Indigo RESTful API to alter the state of this Accessory, and updates the Accessory's properties to match
+// qs: the query string parameters to send to the Indigo RESTful API via a PUT request
+// callback: invokes callback(error), error is undefined if no error occurred
+// updateCallback: optional, invokes updateCallback(propertyName, propertyValue) for each property that has changed value
+IndigoAccessory.prototype.updateStatus = function(qs, callback, updateCallback) {
     this.log("updateStatus of %s: %s", this.name, JSON.stringify(qs));
     this.platform.indigoRequest(this.deviceURL, "PUT", qs,
         function(error, response, body) {
             if (error) {
                 callback(error);
             } else {
-                callback();
+                this.getStatus(callback, updateCallback);
             }
         }.bind(this)
     );
 };
-
-// Invokes callback(error, value), error is undefined if no error occurred
+// Calls the Indigo RESTful API to get the latest state of this Accessory, and updates the Accessory's properties to match
+// key: the property we are interested in
+// callback: invokes callback(error, value), error is undefined if no error occurred, value is the value of the property named key
 IndigoAccessory.prototype.query = function(key, callback) {
     this.getStatus(
         function(error) {
@@ -482,7 +526,12 @@ IndigoAccessory.prototype.query = function(key, callback) {
     );
 };
 
-// Invokes callback(error), error is undefined if no error occurred
+// Calls the Indigo RESTful API to get the latest state of this Accessory, and updates the Accessory's properties to match
+// Invokes the Accessory's update_KEY function for each property KEY where the value has changed from the prior cached state
+// If the Accessory does not have an update_KEY function for a given KEY, it is safely ignored
+// This is used when we are listening on the listenPort for notifications from Indigo about devices that have changed state
+// TODO: A more elegant way to map HomeKit Characteristics and values to Indigo JSON keys and values
+// callback: invokes callback(error), error is undefined if no error occurred
 IndigoAccessory.prototype.refresh = function(callback) {
     this.log("%s: refresh()", this.name);
     this.getStatus(callback,
@@ -496,6 +545,12 @@ IndigoAccessory.prototype.refresh = function(callback) {
     );
 };
 
+// Most accessories support on/off, so we include helper functions to get/set onState here
+
+// Get the current on/off state of the accessory
+// callback: invokes callback(error, onState)
+//           error: error message or undefined if no error
+//           onState: true if device is on, false otherwise
 IndigoAccessory.prototype.getOnState = function(callback) {
     if (this.typeSupportsOnOff) {
         this.getStatus(
@@ -512,9 +567,13 @@ IndigoAccessory.prototype.getOnState = function(callback) {
     }
 };
 
+// Set the current on/off state of the accessory
+// onState: true if on, false otherwise
+// callback: invokes callback(error), error is undefined if no error occurred
+// context: if equal to IndigoAccessory.REFRESH_CONTEXT, will not call the Indigo RESTful API to update the device, otherwise will
 IndigoAccessory.prototype.setOnState = function(onState, callback, context) {
     this.log("%s: setOnState(%s)", this.name, onState);
-    if (context == 'refresh') {
+    if (context == IndigoAccessory.REFRESH_CONTEXT) {
         callback();
     } else if (this.typeSupportsOnOff) {
         this.updateStatus({ isOn: (onState) ? 1 : 0 }, callback);
@@ -525,9 +584,12 @@ IndigoAccessory.prototype.setOnState = function(onState, callback, context) {
 
 
 //
-// Indigo Switch Accessory
+// Indigo Switch Accessory - Represents an on/off switch
 //
-
+// platform: the HomeKit platform
+// deviceURL: the path of the RESTful call for this device, relative to the base URL in the configuration, starting with a /
+// json: the json that describes this device
+//
 function IndigoSwitchAccessory(platform, deviceURL, json) {
     IndigoAccessory.call(this, platform, deviceURL, json);
 
@@ -537,11 +599,23 @@ function IndigoSwitchAccessory(platform, deviceURL, json) {
         .on('set', this.setOnState.bind(this));
 }
 
+// Update HomeKit state to match state of Indigo's isOn property
+// isOn: new value of isOn property
+IndigoSwitchAccessory.prototype.update_isOn = function(isOn) {
+    var onState = (isOn) ? true : false;
+    this.getService(Service.Switch)
+        .getCharacteristic(Characteristic.On)
+        .setValue(onState, undefined, IndigoAccessory.REFRESH_CONTEXT);
+};
+
 
 //
-// Indigo Lock Accessory
+// Indigo Lock Accessory - Represents a lock mechanism
 //
-
+// platform: the HomeKit platform
+// deviceURL: the path of the RESTful call for this device, relative to the base URL in the configuration, starting with a /
+// json: the json that describes this device
+//
 function IndigoLockAccessory(platform, deviceURL, json) {
     IndigoAccessory.call(this, platform, deviceURL, json);
 
@@ -554,6 +628,10 @@ function IndigoLockAccessory(platform, deviceURL, json) {
         .on('set', this.setLockTargetState.bind(this));
 }
 
+// Get the current lock state of the accessory
+// callback: invokes callback(error, lockState)
+//           error: error message or undefined if no error
+//           lockState: Characteristic.LockCurrentState.SECURED (device on) or Characteristic.LockCurrentState.UNSECURED (device off)
 IndigoLockAccessory.prototype.getLockCurrentState = function(callback) {
     if (this.typeSupportsOnOff) {
         this.getStatus(
@@ -570,6 +648,10 @@ IndigoLockAccessory.prototype.getLockCurrentState = function(callback) {
     }
 };
 
+// Get the target lock state of the accessory
+// callback: invokes callback(error, lockState)
+//           error: error message or undefined if no error
+//           lockState: Characteristic.LockTargetState.SECURED (device on) or Characteristic.LockTargetState.UNSECURED (device off)
 IndigoLockAccessory.prototype.getLockTargetState = function(callback) {
     if (this.typeSupportsOnOff) {
         this.getStatus(
@@ -586,9 +668,16 @@ IndigoLockAccessory.prototype.getLockTargetState = function(callback) {
     }
 };
 
-IndigoLockAccessory.prototype.setLockTargetState = function(lockState, callback) {
+// Set the target lock state of the accessory
+// lockState: Characteristic.LockTargetState.SECURED (device on) or Characteristic.LockTargetState.UNSECURED (device off)
+// callback: invokes callback(error), error is undefined if no error occurred
+// context: if equal to IndigoAccessory.REFRESH_CONTEXT, will not call the Indigo RESTful API to update the device, and will not update LockCurrentState
+//          otherwise, calls the Indigo RESTful API and also updates LockCurrentState to match after a one second delay
+IndigoLockAccessory.prototype.setLockTargetState = function(lockState, callback, context) {
     this.log("%s: setLockTargetState(%s)", this.name, lockState);
-    if (this.typeSupportsOnOff) {
+    if (context == IndigoAccessory.REFRESH_CONTEXT) {
+        callback();
+    } else if (this.typeSupportsOnOff) {
         this.updateStatus({ isOn: (lockState == Characteristic.LockTargetState.SECURED) ? 1 : 0 }, callback);
         // Update current state to match target state
         setTimeout(
@@ -597,7 +686,7 @@ IndigoLockAccessory.prototype.setLockTargetState = function(lockState, callback)
                     .getCharacteristic(Characteristic.LockCurrentState)
                     .setValue((lockState == Characteristic.LockTargetState.SECURED) ?
                                 Characteristic.LockCurrentState.SECURED : Characteristic.LockCurrentState.UNSECURED,
-                                undefined, 'fromSetValue');
+                                undefined, IndigoAccessory.REFRESH_CONTEXT);
             }.bind(this),
         1000);
     } else {
@@ -605,11 +694,29 @@ IndigoLockAccessory.prototype.setLockTargetState = function(lockState, callback)
     }
 };
 
+// Update HomeKit state to match state of Indigo's isOn property
+// isOn: new value of isOn property
+IndigoLockAccessory.prototype.update_isOn = function(isOn) {
+    var lockState = (isOn) ? Characteristic.LockCurrentState.SECURED : Characteristic.LockCurrentState.UNSECURED;
+    this.getService(Service.LockMechanism)
+        .getCharacteristic(Characteristic.LockCurrentState)
+        .setValue(lockState, undefined, IndigoAccessory.REFRESH_CONTEXT);
+
+    lockState = (isOn) ? Characteristic.LockTargetState.SECURED : Characteristic.LockTargetState.UNSECURED;
+    this.getService(Service.LockMechanism)
+        .getCharacteristic(Characteristic.LockTargetState)
+        .setValue(lockState, undefined, IndigoAccessory.REFRESH_CONTEXT);
+};
+
 
 //
 // Indigo Position Accessory (Door, Window, or Window Covering)
 //
-
+// platform: the HomeKit platform
+// deviceURL: the path of the RESTful call for this device, relative to the base URL in the configuration, starting with a /
+// json: the json that describes this device
+// service: the HomeKit service
+//
 function IndigoPositionAccessory(platform, deviceURL, json, service) {
     IndigoAccessory.call(this, platform, deviceURL, json);
 
@@ -626,8 +733,12 @@ function IndigoPositionAccessory(platform, deviceURL, json, service) {
         .on('set', this.setTargetPosition.bind(this));
 }
 
+// Get the position of the accessory
+// callback: invokes callback(error, position)
+//           error: error message or undefined if no error
+//           position: if device supports brightness, will return the brightness value; otherwise on=100 and off=0
 IndigoPositionAccessory.prototype.getPosition = function(callback) {
-    if (this.typeSupportsOnOff  || this.typeSupportsDim) {
+    if (this.typeSupportsOnOff || this.typeSupportsDim) {
         this.getStatus(
             function(error) {
                 if (error) {
@@ -645,6 +756,10 @@ IndigoPositionAccessory.prototype.getPosition = function(callback) {
     }
 };
 
+// Get the position state of the accessory
+// callback: invokes callback(error, position)
+//           error: error message or undefined if no error
+//           positionState: always Characteristic.PositionState.STOPPED
 IndigoPositionAccessory.prototype.getPositionState = function(callback) {
     if (this.typeSupportsOnOff) {
         this.log("%s: getPositionState() => %s", this.name, Characteristic.PositionState.STOPPED);
@@ -652,10 +767,16 @@ IndigoPositionAccessory.prototype.getPositionState = function(callback) {
     }
 };
 
-
-IndigoPositionAccessory.prototype.setTargetPosition = function(position, callback) {
+// Set the target position of the accessory
+// position: if device supports brightness, sets brightness to equal position; otherwise turns device on if position > 0, or off otherwise
+// callback: invokes callback(error), error is undefined if no error occurred
+// context: if equal to IndigoAccessory.REFRESH_CONTEXT, will not call the Indigo RESTful API to update the device, and will not update CurrentPosition
+//          otherwise, calls the Indigo RESTful API and also updates CurrentPosition to match position after a one second delay
+IndigoPositionAccessory.prototype.setTargetPosition = function(position, callback, context) {
     this.log("%s: setTargetPosition(%s)", this.name, position);
-    if (this.typeSupportsOnOff || this.typeSupportsDim) {
+    if (context == IndigoAccessory.REFRESH_CONTEXT) {
+        callback();
+    } else if (this.typeSupportsOnOff || this.typeSupportsDim) {
         if (this.typeSupportsDim) {
             this.updateStatus({ brightness: position }, callback);
         } else {
@@ -666,7 +787,7 @@ IndigoPositionAccessory.prototype.setTargetPosition = function(position, callbac
             function() {
                 this.service
                     .getCharacteristic(Characteristic.CurrentPosition)
-                    .setValue(position, undefined, 'fromSetValue');
+                    .setValue(position, undefined, IndigoAccessory.REFRESH_CONTEXT);
             }.bind(this),
         1000);
     } else {
@@ -674,11 +795,40 @@ IndigoPositionAccessory.prototype.setTargetPosition = function(position, callbac
     }
 };
 
+// Update HomeKit state to match state of Indigo's isOn property
+// Does nothing if device supports brightness
+// isOn: new value of isOn property
+IndigoPositionAccessory.prototype.update_isOn = function(isOn) {
+    if (! this.typeSupportsDim) {
+        var position = (isOn) ? 100: 0;
+        this.service
+            .getCharacteristic(Characteristic.CurrentPosition)
+            .setValue(position, undefined, IndigoAccessory.REFRESH_CONTEXT);
+        this.service
+            .getCharacteristic(Characteristic.TargetPosition)
+            .setValue(position, undefined, IndigoAccessory.REFRESH_CONTEXT);
+    }
+};
+
+// Update HomeKit state to match state of Indigo's brightness property
+// brightness: new value of brightness property
+IndigoPositionAccessory.prototype.update_brightness = function(brightness) {
+    this.service
+        .getCharacteristic(Characteristic.CurrentPosition)
+        .setValue(brightness, undefined, IndigoAccessory.REFRESH_CONTEXT);
+    this.service
+        .getCharacteristic(Characteristic.TargetPosition)
+        .setValue(brightness, undefined, IndigoAccessory.REFRESH_CONTEXT);
+};
+
 
 //
 // Indigo Door Accessory
 //
-
+// platform: the HomeKit platform
+// deviceURL: the path of the RESTful call for this device, relative to the base URL in the configuration, starting with a /
+// json: the json that describes this device
+//
 function IndigoDoorAccessory(platform, deviceURL, json) {
     IndigoPositionAccessory.call(this, platform, deviceURL, json, new Service.Door(this.name));
 }
@@ -687,7 +837,10 @@ function IndigoDoorAccessory(platform, deviceURL, json) {
 //
 // Indigo Window Accessory
 //
-
+// platform: the HomeKit platform
+// deviceURL: the path of the RESTful call for this device, relative to the base URL in the configuration, starting with a /
+// json: the json that describes this device
+//
 function IndigoWindowAccessory(platform, deviceURL, json) {
     IndigoPositionAccessory.call(this, platform, deviceURL, json, new Service.Window(this.name));
 }
@@ -696,7 +849,10 @@ function IndigoWindowAccessory(platform, deviceURL, json) {
 //
 // Indigo Window Covering Accessory
 //
-
+// platform: the HomeKit platform
+// deviceURL: the path of the RESTful call for this device, relative to the base URL in the configuration, starting with a /
+// json: the json that describes this device
+//
 function IndigoWindowCoveringAccessory(platform, deviceURL, json) {
     IndigoPositionAccessory.call(this, platform, deviceURL, json, new Service.WindowCovering(this.name));
 }
@@ -705,7 +861,10 @@ function IndigoWindowCoveringAccessory(platform, deviceURL, json) {
 //
 // Indigo Garage Door Accessory
 //
-
+// platform: the HomeKit platform
+// deviceURL: the path of the RESTful call for this device, relative to the base URL in the configuration, starting with a /
+// json: the json that describes this device
+//
 function IndigoGarageDoorAccessory(platform, deviceURL, json) {
     IndigoAccessory.call(this, platform, deviceURL, json);
 
@@ -721,6 +880,10 @@ function IndigoGarageDoorAccessory(platform, deviceURL, json) {
         .on('get', this.getObstructionDetected.bind(this));
 }
 
+// Get the current door state of the accessory
+// callback: invokes callback(error, doorState)
+//           error: error message or undefined if no error
+//           doorState: Characteristic.CurrentDoorState.OPEN (device on) or Characteristic.CurrentDoorState.CLOSED (device off)
 IndigoGarageDoorAccessory.prototype.getCurrentDoorState = function(callback) {
     if (this.typeSupportsOnOff) {
         this.getStatus(
@@ -737,6 +900,10 @@ IndigoGarageDoorAccessory.prototype.getCurrentDoorState = function(callback) {
     }
 };
 
+// Get the target door state of the accessory
+// callback: invokes callback(error, doorState)
+//           error: error message or undefined if no error
+//           doorState: Characteristic.TargetDoorState.OPEN (device on) or Characteristic.TargetDoorState.CLOSED (device off)
 IndigoGarageDoorAccessory.prototype.getTargetDoorState = function(callback) {
     if (this.typeSupportsOnOff) {
         this.getStatus(
@@ -753,9 +920,16 @@ IndigoGarageDoorAccessory.prototype.getTargetDoorState = function(callback) {
     }
 };
 
-IndigoGarageDoorAccessory.prototype.setTargetDoorState = function(doorState, callback) {
+// Set the target door state of the accessory
+// lockState: Characteristic.TargetDoorState.OPEN (device on) or Characteristic.TargetDoorState.CLOSED (device off)
+// callback: invokes callback(error), error is undefined if no error occurred
+// context: if equal to IndigoAccessory.REFRESH_CONTEXT, will not call the Indigo RESTful API to update the device, and will not update CurrentDoorState
+//          otherwise, calls the Indigo RESTful API and also updates CurrentDoorState to match after a one second delay
+IndigoGarageDoorAccessory.prototype.setTargetDoorState = function(doorState, callback, context) {
     this.log("%s: setTargetPosition(%s)", this.name, doorState);
-    if (this.typeSupportsOnOff) {
+    if (context == IndigoAccessory.REFRESH_CONTEXT) {
+        callback();
+    } else if (this.typeSupportsOnOff) {
         this.updateStatus({ isOn: (doorState == Characteristic.TargetDoorState.OPEN) ? 1 : 0 }, callback);
         // Update current state to match target state
         setTimeout(
@@ -772,6 +946,10 @@ IndigoGarageDoorAccessory.prototype.setTargetDoorState = function(doorState, cal
     }
 };
 
+// Get the obstruction detected state of the accessory
+// callback: invokes callback(error, obstructionDetected)
+//           error: error message or undefined if no error
+//           obstructionDetected: always false
 IndigoGarageDoorAccessory.prototype.getObstructionDetected = function(callback) {
     if (this.typeSupportsOnOff) {
         this.log("%s: getObstructionDetected() => %s", this.name, false);
@@ -779,11 +957,28 @@ IndigoGarageDoorAccessory.prototype.getObstructionDetected = function(callback) 
     }
 };
 
+// Update HomeKit state to match state of Indigo's isOn property
+// isOn: new value of isOn property
+IndigoGarageDoorAccessory.prototype.update_isOn = function(isOn) {
+    var doorState = (isOn) ? Characteristic.CurrentDoorState.OPEN : Characteristic.CurrentDoorState.CLOSED;
+    this.getService(Service.GarageDoorOpener)
+        .getCharacteristic(Characteristic.CurrentDoorState)
+        .setValue(doorState, undefined, IndigoAccessory.REFRESH_CONTEXT);
+
+    doorState = (isOn) ? Characteristic.TargetDoorState.OPEN : Characteristic.TargetDoorState.CLOSED;
+    this.getService(Service.GarageDoorOpener)
+        .getCharacteristic(Characteristic.TargetDoorState)
+        .setValue(doorState, undefined, IndigoAccessory.REFRESH_CONTEXT);
+};
+
 
 //
 // Indigo Light Accessory
 //
-
+// platform: the HomeKit platform
+// deviceURL: the path of the RESTful call for this device, relative to the base URL in the configuration, starting with a /
+// json: the json that describes this device
+//
 function IndigoLightAccessory(platform, deviceURL, json) {
     IndigoAccessory.call(this, platform, deviceURL, json);
 
@@ -799,6 +994,10 @@ function IndigoLightAccessory(platform, deviceURL, json) {
     }
 }
 
+// Get the brightness of the accessory
+// callback: invokes callback(error, position)
+//           error: error message or undefined if no error
+//           brightness: if device supports brightness, will return the brightness value
 IndigoLightAccessory.prototype.getBrightness = function(callback) {
     if (this.typeSupportsDim) {
         this.query("brightness", callback);
@@ -807,9 +1006,13 @@ IndigoLightAccessory.prototype.getBrightness = function(callback) {
     }
 };
 
+// Set the current brightness of the accessory
+// brightness: the brightness, from 0 (off) to 100 (full on)
+// callback: invokes callback(error), error is undefined if no error occurred
+// context: if equal to IndigoAccessory.REFRESH_CONTEXT, will not call the Indigo RESTful API to update the device, otherwise will
 IndigoLightAccessory.prototype.setBrightness = function(brightness, callback, context) {
     this.log("%s: setBrightness(%d)", this.name, brightness);
-    if (context == 'refresh') {
+    if (context == IndigoAccessory.REFRESH_CONTEXT) {
         callback();
     } else if (this.typeSupportsDim && brightness >= 0 && brightness <= 100) {
         this.updateStatus({brightness: brightness}, callback);
@@ -818,17 +1021,21 @@ IndigoLightAccessory.prototype.setBrightness = function(brightness, callback, co
     }
 };
 
+// Update HomeKit state to match state of Indigo's isOn property
+// isOn: new value of isOn property
 IndigoLightAccessory.prototype.update_isOn = function(isOn) {
     var onState = (isOn) ? true : false;
     this.getService(Service.Lightbulb)
         .getCharacteristic(Characteristic.On)
-        .setValue(onState, undefined, 'refresh');
+        .setValue(onState, undefined, IndigoAccessory.REFRESH_CONTEXT);
 };
 
+// Update HomeKit state to match state of Indigo's brightness property
+// brightness: new value of brightness property
 IndigoLightAccessory.prototype.update_brightness = function(brightness) {
     this.getService(Service.Lightbulb)
         .getCharacteristic(Characteristic.Brightness)
-        .setValue(brightness, undefined, 'refresh');
+        .setValue(brightness, undefined, IndigoAccessory.REFRESH_CONTEXT);
 };
 
 
@@ -1142,7 +1349,7 @@ IndigoActionAccessory.prototype.getActionState = function(callback) {
 // Execute the action and turn the switch back off
 IndigoActionAccessory.prototype.executeAction = function(value, callback, context) {
     this.log("%s: executeAction(%s)", this.name, value);
-    if (value && context !== 'fromSetValue') {
+    if (value && context !== IndigoAccessory.REFRESH_CONTEXT) {
         this.platform.indigoRequest(this.deviceURL, "EXECUTE", null,
             function(error, response, body) {
                 if (error) {
@@ -1156,7 +1363,7 @@ IndigoActionAccessory.prototype.executeAction = function(value, callback, contex
             function() {
                 this.getService(Service.Switch)
                     .getCharacteristic(Characteristic.On)
-                    .setValue(false, undefined, 'fromSetValue');
+                    .setValue(false, undefined, IndigoAccessory.REFRESH_CONTEXT);
             }.bind(this),
         1000);
     }
