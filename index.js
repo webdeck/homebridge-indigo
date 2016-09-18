@@ -26,7 +26,8 @@ Configuration example for your Homebridge config.json:
         "treatAsWindowIds": [ "123123", "456456" ],
         "treatAsWindowCoveringIds": [ "345345", "678678" ],
         "thermostatsInCelsius": false,
-        "accessoryNamePrefix": ""
+        "accessoryNamePrefix": "",
+        "listenPort": 8177
     }
 ]
 
@@ -50,6 +51,7 @@ Fields:
     "treatAsWindowCoveringIds": Array of Indigo IDs to treat as window coverings (instead of lightbulbs) - devices must support on/off to qualify (on = open)
     "thermostatsInCelsius": If true, thermostats in Indigo are reporting temperatures in celsius (optional, defaults to false)
     "accessoryNamePrefix": Prefix all accessory names with this string (optional, useful for testing)
+    "listenPort": homebridge-indigo will listen on this port for device state updates from Indigo (requires compatible Indigo plugin) (optional, defaults to not listening)
 
 Note that if you specify both "includeIds" and "excludeIds", then only the IDs that are in
 "includeIds" and missing from "excludeIds" will be mapped to HomeKit devices.  Typically,
@@ -62,6 +64,7 @@ will NOT be exposed to HomeKit, because Indigo excludes those devices from its R
 
 var request = require("request");
 var async = require("async");
+var express = require("express");
 var inherits = require('util').inherits;
 var Service, Characteristic, Accessory, uuid;
 
@@ -108,6 +111,9 @@ function IndigoPlatform(log, config) {
             request(options, callback);
         }.bind(this)
     );
+
+    this.foundAccessories = [];
+    this.accessoryMap = new Map();
 
     var protocol = "http";
     if (config.protocol) {
@@ -160,12 +166,20 @@ function IndigoPlatform(log, config) {
     } else {
         this.accessoryNamePrefix = "";
     }
+    
+    if (config.listenPort) {
+        this.app = express();
+        this.app.get("/devices/:id", this.updateAccessory.bind(this));
+        this.app.listen(config.listenPort,
+            function() {
+                this.log("Listening on port %d", config.listenPort);
+            }.bind(this)
+        );
+    }
 }
 
 // Invokes callback(accessories[])
 IndigoPlatform.prototype.accessories = function(callback) {
-    this.foundAccessories = [];
-
     var requestURLs = [ this.path + "/devices.json/" ];
     if (this.includeActions) {
         requestURLs.push(this.path + "/actions.json/");
@@ -246,6 +260,7 @@ IndigoPlatform.prototype.addAccessory = function(item, callback) {
                     var accessory = this.createAccessoryFromJSON(item.restURL, json);
                     if (accessory) {
                         this.foundAccessories.push(accessory);
+                        this.accessoryMap.set(String(json.id), accessory);
                     } else {
                         this.log("Ignoring unknown accessory type %s", json.type);
                     }
@@ -354,6 +369,26 @@ IndigoPlatform.prototype.createAccessoryFromJSON = function(deviceURL, json) {
     }
 };
 
+// Invoked by a request on listenPort of /devices/:id
+IndigoPlatform.prototype.updateAccessory = function(request, response) {
+    var id = String(request.params.id);
+    this.log("Got update request for device ID %s", id);
+    var accessory = this.accessoryMap.get(id);
+    if (accessory) {
+        accessory.refresh(function(error) {
+            if (error) {
+                this.log("Error updating device ID %s: %s", id, error);
+                response.sendStatus(500);
+            } else {
+                response.sendStatus(200);
+            }
+        }.bind(this));
+    }
+    else {
+        response.sendStatus(404);
+    }
+};
+
 
 //
 // Generic Indigo Accessory
@@ -386,10 +421,16 @@ IndigoAccessory.prototype.getServices = function() {
 };
 
 // Updates object fields with values from json
-IndigoAccessory.prototype.updateFromJSON = function(json) {
+// updateCallback is an optional function that is invoked with the name of each property that has changed
+IndigoAccessory.prototype.updateFromJSON = function(json, updateCallback) {
     for (var prop in json) {
-        if (json.hasOwnProperty(prop)) {
-            this[prop] = json[prop];
+        if (prop != "name" && json.hasOwnProperty(prop)) {
+            if (json[prop] != this[prop]) {
+                this[prop] = json[prop];
+                if (updateCallback) {
+                    updateCallback(prop, json[prop]);
+                }
+            }
         }
     }
 
@@ -399,13 +440,14 @@ IndigoAccessory.prototype.updateFromJSON = function(json) {
 };
 
 // Invokes callback(error), error is undefined if no error occurred
-IndigoAccessory.prototype.getStatus = function(callback) {
+// updateCallback is an optional function that is invoked with the name of each property that has changed
+IndigoAccessory.prototype.getStatus = function(callback, updateCallback) {
     this.platform.indigoRequestJSON(this.deviceURL, "GET", null,
         function(error, json) {
             if (error) {
                 callback(error);
             } else {
-                this.updateFromJSON(json);
+                this.updateFromJSON(json, updateCallback);
                 callback();
             }
         }.bind(this)
@@ -440,6 +482,20 @@ IndigoAccessory.prototype.query = function(key, callback) {
     );
 };
 
+// Invokes callback(error), error is undefined if no error occurred
+IndigoAccessory.prototype.refresh = function(callback) {
+    this.log("%s: refresh()", this.name);
+    this.getStatus(callback,
+        function(prop, value) {
+            updateFunction = "update_" + prop;
+            if (this[updateFunction]) {
+                this.log("%s: %s(%s)", this.name, updateFunction, value);
+                this[updateFunction](value);
+            }
+        }.bind(this)
+    );
+};
+
 IndigoAccessory.prototype.getOnState = function(callback) {
     if (this.typeSupportsOnOff) {
         this.getStatus(
@@ -456,12 +512,14 @@ IndigoAccessory.prototype.getOnState = function(callback) {
     }
 };
 
-IndigoAccessory.prototype.setOnState = function(onState, callback) {
+IndigoAccessory.prototype.setOnState = function(onState, callback, context) {
     this.log("%s: setOnState(%s)", this.name, onState);
-    if (this.typeSupportsOnOff) {
-        this.updateStatus({ isOn: (onState) ? 1 : 0 }, callback);
-    } else {
-        callback("Accessory does not support on/off");
+    if (context !== 'refresh') {
+        if (this.typeSupportsOnOff) {
+            this.updateStatus({ isOn: (onState) ? 1 : 0 }, callback);
+        } else {
+            callback("Accessory does not support on/off");
+        }
     }
 };
 
@@ -749,12 +807,28 @@ IndigoLightAccessory.prototype.getBrightness = function(callback) {
     }
 };
 
-IndigoLightAccessory.prototype.setBrightness = function(brightness, callback) {
-    if (this.typeSupportsDim && brightness >= 0 && brightness <= 100) {
-        this.updateStatus({ brightness: brightness }, callback);
-    } else {
-        callback("Accessory does not support brightness");
+IndigoLightAccessory.prototype.setBrightness = function(brightness, callback, context) {
+    this.log("%s: setBrightness(%d)", this.name, brightness);
+    if (context !== 'refresh') {
+        if (this.typeSupportsDim && brightness >= 0 && brightness <= 100) {
+            this.updateStatus({brightness: brightness}, callback);
+        } else {
+            callback("Accessory does not support brightness");
+        }
     }
+};
+
+IndigoLightAccessory.prototype.update_isOn = function(isOn) {
+    var onState = (isOn) ? true : false;
+    this.getService(Service.Lightbulb)
+        .getCharacteristic(Characteristic.On)
+        .setValue(onState, undefined, 'refresh');
+};
+
+IndigoLightAccessory.prototype.update_brightness = function(brightness) {
+    this.getService(Service.Lightbulb)
+        .getCharacteristic(Characteristic.Brightness)
+        .setValue(brightness, undefined, 'refresh');
 };
 
 

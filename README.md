@@ -41,7 +41,8 @@ Configuration sample:
             "treatAsWindowIds": [ "123123", "456456" ],
             "treatAsWindowCoveringIds": [ "345345", "678678" ],
             "thermostatsInCelsius": false,
-            "accessoryNamePrefix": ""
+            "accessoryNamePrefix": "",
+            "listenPort": 8177
         }
     ]
 ```
@@ -66,6 +67,7 @@ Fields:
 * "treatAsWindowCoveringIds": Array of Indigo IDs to treat as window coverings (instead of lightbulbs) - devices must support on/off to qualify (on = open)
 * "thermostatsInCelsius": If true, thermostats in Indigo are reporting temperatures in celsius (optional, defaults to false)
 * "accessoryNamePrefix": Prefix all accessory names with this string (optional, useful for testing)
+* "listenPort": homebridge-indigo will listen on this port for device state updates from Indigo (requires compatible Indigo plugin) (optional, defaults to not listening)
 
 Note that if you specify both "includeIds" and "excludeIds", then only the IDs that are in
 "includeIds" and missing from "excludeIds" will be mapped to HomeKit devices.  Typically,

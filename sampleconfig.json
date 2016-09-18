@@ -28,7 +28,8 @@
             "treatAsWindowIds": [ "123123", "456456" ],
             "treatAsWindowCoveringIds": [ "345345", "678678" ],
             "thermostatsInCelsius": false,
-            "accessoryNamePrefix": ""
+            "accessoryNamePrefix": "",
+            "listenPort": 8177
         }
     ],
 
