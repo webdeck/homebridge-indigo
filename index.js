@@ -514,12 +514,12 @@ IndigoAccessory.prototype.getOnState = function(callback) {
 
 IndigoAccessory.prototype.setOnState = function(onState, callback, context) {
     this.log("%s: setOnState(%s)", this.name, onState);
-    if (context !== 'refresh') {
-        if (this.typeSupportsOnOff) {
-            this.updateStatus({ isOn: (onState) ? 1 : 0 }, callback);
-        } else {
-            callback("Accessory does not support on/off");
-        }
+    if (context == 'refresh') {
+        callback();
+    } else if (this.typeSupportsOnOff) {
+        this.updateStatus({ isOn: (onState) ? 1 : 0 }, callback);
+    } else {
+        callback("Accessory does not support on/off");
     }
 };
 
@@ -809,12 +809,12 @@ IndigoLightAccessory.prototype.getBrightness = function(callback) {
 
 IndigoLightAccessory.prototype.setBrightness = function(brightness, callback, context) {
     this.log("%s: setBrightness(%d)", this.name, brightness);
-    if (context !== 'refresh') {
-        if (this.typeSupportsDim && brightness >= 0 && brightness <= 100) {
-            this.updateStatus({brightness: brightness}, callback);
-        } else {
-            callback("Accessory does not support brightness");
-        }
+    if (context == 'refresh') {
+        callback();
+    } else if (this.typeSupportsDim && brightness >= 0 && brightness <= 100) {
+        this.updateStatus({brightness: brightness}, callback);
+    } else {
+        callback("Accessory does not support brightness");
     }
 };
 
