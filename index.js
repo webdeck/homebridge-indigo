@@ -65,6 +65,7 @@ will NOT be exposed to HomeKit, because Indigo excludes those devices from its R
 var request = require("request");
 var async = require("async");
 var express = require("express");
+var bodyParser = require('body-parser');
 var inherits = require('util').inherits;
 var Service, Characteristic, Accessory, uuid;
 
@@ -174,7 +175,10 @@ function IndigoPlatform(log, config) {
     // Start the accessory update listener, if configured
     if (config.listenPort) {
         this.app = express();
+        this.app.use(bodyParser.json());
+        this.app.use(bodyParser.urlencoded({ extended: true }));
         this.app.get("/devices/:id", this.updateAccessory.bind(this));
+        this.app.post("/devices/:id", this.updateAccessoryFromPost.bind(this));
         this.app.listen(config.listenPort,
             function() {
                 this.log("Listening on port %d", config.listenPort);
@@ -396,8 +400,8 @@ IndigoPlatform.prototype.createAccessoryFromJSON = function(deviceURL, json) {
     }
 };
 
-// Invoked by a request on listenPort of /devices/:id
-// If the ID corresponds to an accessory, invokes refresh(callback) on that accessory
+// Invoked by a GET request on listenPort of /devices/:id
+// If the ID corresponds to an accessory, invokes refresh() on that accessory
 // Sends a 200 HTTP response if successful, a 404 if the ID is not found, or a 500 if there is an error
 IndigoPlatform.prototype.updateAccessory = function(request, response) {
     var id = String(request.params.id);
@@ -412,6 +416,23 @@ IndigoPlatform.prototype.updateAccessory = function(request, response) {
                 response.sendStatus(200);
             }
         }.bind(this));
+    }
+    else {
+        response.sendStatus(404);
+    }
+};
+
+// Invoked by a POST request to listenPort of /devices/:id
+// If the ID corresponds to an accessory, invokes refreshFromJSON() on that accessory with the POST body content (JSON)
+// Unknown properties in the post body are silently ignored
+// Sends a 200 HTTP response if successful, or a 404 if the ID is not found
+IndigoPlatform.prototype.updateAccessoryFromPost = function(request, response) {
+    var id = String(request.params.id);
+    this.log("Got update request for device ID %s", id);
+    var accessory = this.accessoryMap.get(id);
+    if (accessory) {
+        accessory.refreshFromJSON(request.body);
+        response.sendStatus(200);
     }
     else {
         response.sendStatus(404);
@@ -526,24 +547,39 @@ IndigoAccessory.prototype.query = function(key, callback) {
     );
 };
 
+// Invokes the Accessory's update_XXX(value) function, if it exists, where "XXX" is the value of prop
+// For example, updateProperty("brightness", 100) invokes update_brightness(100) if the function update_brightess exists
+// prop: the property name
+// value: the property value
+// TODO: Need a more elegant way to map HomeKit Characteristics and values to Indigo JSON keys and values
+IndigoAccessory.prototype.updateProperty = function(prop, value) {
+    updateFunction = "update_" + prop;
+    if (this[updateFunction]) {
+        this.log("%s: %s(%s)", this.name, updateFunction, value);
+        this[updateFunction](value);
+    }
+};
+
 // Calls the Indigo RESTful API to get the latest state of this Accessory, and updates the Accessory's properties to match
 // Invokes the Accessory's update_KEY function for each property KEY where the value has changed from the prior cached state
 // If the Accessory does not have an update_KEY function for a given KEY, it is safely ignored
 // This is used when we are listening on the listenPort for notifications from Indigo about devices that have changed state
-// TODO: A more elegant way to map HomeKit Characteristics and values to Indigo JSON keys and values
 // callback: invokes callback(error), error is undefined if no error occurred
 IndigoAccessory.prototype.refresh = function(callback) {
     this.log("%s: refresh()", this.name);
-    this.getStatus(callback,
-        function(prop, value) {
-            updateFunction = "update_" + prop;
-            if (this[updateFunction]) {
-                this.log("%s: %s(%s)", this.name, updateFunction, value);
-                this[updateFunction](value);
-            }
-        }.bind(this)
-    );
+    this.getStatus(callback, this.updateProperty.bind(this));
 };
+
+// Updates the Accessory's properties to match the provided JSON key/value pairs
+// Invokes the Accessory's update_KEY function for each property KEY where the value has changed from the prior cached state
+// If the Accessory does not have an update_KEY function for a given KEY, it is safely ignored
+// This is used when we are listening on the listenPort for notifications from Indigo about devices that have changed state
+// json: the JSON key/value pairs to update
+IndigoAccessory.prototype.refreshFromJSON = function(json) {
+    this.log("%s: refreshFromJSON()", this.name);
+    this.updateFromJSON(json, this.updateProperty.bind(this));
+};
+
 
 // Most accessories support on/off, so we include helper functions to get/set onState here
 
@@ -677,7 +713,8 @@ IndigoLockAccessory.prototype.setLockTargetState = function(lockState, callback,
     this.log("%s: setLockTargetState(%s)", this.name, lockState);
     if (context == IndigoAccessory.REFRESH_CONTEXT) {
         callback();
-    } else if (this.typeSupportsOnOff) {
+    }
+    else if (this.typeSupportsOnOff) {
         this.updateStatus({ isOn: (lockState == Characteristic.LockTargetState.SECURED) ? 1 : 0 }, callback);
         // Update current state to match target state
         setTimeout(
@@ -689,7 +726,8 @@ IndigoLockAccessory.prototype.setLockTargetState = function(lockState, callback,
                                 undefined, IndigoAccessory.REFRESH_CONTEXT);
             }.bind(this),
         1000);
-    } else {
+    }
+    else {
         callback("Accessory does not support on/off");
     }
 };
@@ -776,7 +814,8 @@ IndigoPositionAccessory.prototype.setTargetPosition = function(position, callbac
     this.log("%s: setTargetPosition(%s)", this.name, position);
     if (context == IndigoAccessory.REFRESH_CONTEXT) {
         callback();
-    } else if (this.typeSupportsOnOff || this.typeSupportsDim) {
+    }
+    else if (this.typeSupportsOnOff || this.typeSupportsDim) {
         if (this.typeSupportsDim) {
             this.updateStatus({ brightness: position }, callback);
         } else {
@@ -790,7 +829,8 @@ IndigoPositionAccessory.prototype.setTargetPosition = function(position, callbac
                     .setValue(position, undefined, IndigoAccessory.REFRESH_CONTEXT);
             }.bind(this),
         1000);
-    } else {
+    }
+    else {
         callback("Accessory does not support on/off or dim");
     }
 };
@@ -929,7 +969,8 @@ IndigoGarageDoorAccessory.prototype.setTargetDoorState = function(doorState, cal
     this.log("%s: setTargetPosition(%s)", this.name, doorState);
     if (context == IndigoAccessory.REFRESH_CONTEXT) {
         callback();
-    } else if (this.typeSupportsOnOff) {
+    }
+    else if (this.typeSupportsOnOff) {
         this.updateStatus({ isOn: (doorState == Characteristic.TargetDoorState.OPEN) ? 1 : 0 }, callback);
         // Update current state to match target state
         setTimeout(
@@ -941,7 +982,8 @@ IndigoGarageDoorAccessory.prototype.setTargetDoorState = function(doorState, cal
                                 undefined, IndigoAccessory.REFRESH_CONTEXT);
             }.bind(this),
         1000);
-    } else {
+    }
+    else {
         callback("Accessory does not support on/off");
     }
 };
@@ -1014,9 +1056,13 @@ IndigoLightAccessory.prototype.setBrightness = function(brightness, callback, co
     this.log("%s: setBrightness(%d)", this.name, brightness);
     if (context == IndigoAccessory.REFRESH_CONTEXT) {
         callback();
-    } else if (this.typeSupportsDim && brightness >= 0 && brightness <= 100) {
-        this.updateStatus({brightness: brightness}, callback);
-    } else {
+    }
+    else if (this.typeSupportsDim) {
+        if (brightness >= 0 && brightness <= 100) {
+            this.updateStatus({brightness: brightness}, callback);
+        }
+    }
+    else {
         callback("Accessory does not support brightness");
     }
 };
@@ -1042,7 +1088,10 @@ IndigoLightAccessory.prototype.update_brightness = function(brightness) {
 //
 // Indigo Fan Accessory
 //
-
+// platform: the HomeKit platform
+// deviceURL: the path of the RESTful call for this device, relative to the base URL in the configuration, starting with a /
+// json: the json that describes this device
+//
 function IndigoFanAccessory(platform, deviceURL, json) {
     IndigoAccessory.call(this, platform, deviceURL, json);
 
@@ -1056,6 +1105,10 @@ function IndigoFanAccessory(platform, deviceURL, json) {
         .on('set', this.setRotationSpeed.bind(this));
 }
 
+// Get the rotation speed of the accessory
+// callback: invokes callback(error, speedIndex)
+//           error: error message or undefined if no error
+//           speedIndex: if device supports speed control, will return the speed as a value from 0 (off) to 100 (full speed)
 IndigoFanAccessory.prototype.getRotationSpeed = function(callback) {
     if (this.typeSupportsSpeedControl) {
         this.query("speedIndex",
@@ -1073,28 +1126,48 @@ IndigoFanAccessory.prototype.getRotationSpeed = function(callback) {
     }
 };
 
+// Set the current rotation speed of the accessory
+// rotationSpeed: the rotation speed, from 0 (off) to 100 (full speed)
+// callback: invokes callback(error), error is undefined if no error occurred
+// context: if equal to IndigoAccessory.REFRESH_CONTEXT, will not call the Indigo RESTful API to update the device, otherwise will
 IndigoFanAccessory.prototype.setRotationSpeed = function(rotationSpeed, callback) {
-    if (this.typeSupportsSpeedControl && rotationSpeed >= 0.0 && rotationSpeed <= 100.0) {
-        var speedIndex = 0;
-        if (rotationSpeed > 66.6) {
-            speedIndex = 3;
-        } else if (rotationSpeed > 33.3) {
-            speedIndex = 2;
-        } else if (rotationSpeed > 0) {
-            speedIndex = 1;
+    if (context == IndigoAccessory.REFRESH_CONTEXT) {
+        callback();
+    }
+    else if (this.typeSupportsSpeedControl) {
+        if (rotationSpeed >= 0.0 && rotationSpeed <= 100.0) {
+            var speedIndex = 0;
+            if (rotationSpeed > 66.6) {
+                speedIndex = 3;
+            } else if (rotationSpeed > 33.3) {
+                speedIndex = 2;
+            } else if (rotationSpeed > 0) {
+                speedIndex = 1;
+            }
+            this.updateStatus({speedIndex: speedIndex}, callback);
         }
-        this.updateStatus({ speedIndex: speedIndex }, callback);
     }
     else {
         callback("Accessory does not support rotation speed");
     }
 };
 
+// Update HomeKit state to match state of Indigo's speedIndex property
+// speedIndex: new value of speedIndex property
+IndigoLightAccessory.prototype.update_speedIndex = function(speedIndex) {
+    this.getService(Service.Fan)
+        .getCharacteristic(Characteristic.RotationSpeed)
+        .setValue((speedIndex / 3.0) * 100.0, undefined, IndigoAccessory.REFRESH_CONTEXT);
+};
+
 
 //
 // Indigo Thermostat Accessory
 //
-
+// platform: the HomeKit platform
+// deviceURL: the path of the RESTful call for this device, relative to the base URL in the configuration, starting with a /
+// json: the json that describes this device
+//
 function IndigoThermostatAccessory(platform, deviceURL, json, thermostatsInCelsius) {
     IndigoAccessory.call(this, platform, deviceURL, json);
 
@@ -1328,9 +1401,12 @@ IndigoThermostatAccessory.prototype.getCurrentRelativeHumidity = function(callba
 
 
 //
-// Indigo Action Accessory
+// Indigo Action Accessory - Represents an Indigo action group as a "push button switch" accessory (turns on only momentarily)
 //
-
+// platform: the HomeKit platform
+// deviceURL: the path of the RESTful call for this device, relative to the base URL in the configuration, starting with a /
+// json: the json that describes this device
+//
 function IndigoActionAccessory(platform, deviceURL, json) {
     IndigoAccessory.call(this, platform, deviceURL, json);
 
@@ -1340,13 +1416,18 @@ function IndigoActionAccessory(platform, deviceURL, json) {
         .on('set', this.executeAction.bind(this));
 }
 
+// Get the action state of the accessory
 // Actions always say they are off
+// callback: invokes callback(undefined, false)
 IndigoActionAccessory.prototype.getActionState = function(callback) {
     this.log("%s: getActionState() => %s", this.name, false);
     callback(undefined, false);
 };
 
-// Execute the action and turn the switch back off
+// Executes the action if value is true and turns the accessory back off
+// value: if true, executes the action and updates the accessory state back to off
+// callback: invokes callback(error), error is undefined if no error occurred
+// context: if equal to IndigoAccessory.REFRESH_CONTEXT, will not call the Indigo RESTful API to execute the action, otherwise will
 IndigoActionAccessory.prototype.executeAction = function(value, callback, context) {
     this.log("%s: executeAction(%s)", this.name, value);
     if (value && context !== IndigoAccessory.REFRESH_CONTEXT) {
