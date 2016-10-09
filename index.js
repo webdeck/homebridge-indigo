@@ -444,10 +444,11 @@ IndigoPlatform.prototype.updateAccessoryFromPost = function(request, response) {
 // Generic Indigo Accessory
 //
 // platform: the HomeKit platform
+// serviceType: the constructor for the type of HAP service to create
 // deviceURL: the path of the RESTful call for this device, relative to the base URL in the configuration, starting with a /
 // json: the json that describes this device
 //
-function IndigoAccessory(platform, deviceURL, json) {
+function IndigoAccessory(platform, serviceType, deviceURL, json) {
     this.platform = platform;
     this.log = platform.log;
     this.deviceURL = deviceURL;
@@ -456,17 +457,19 @@ function IndigoAccessory(platform, deviceURL, json) {
 
     Accessory.call(this, this.name, uuid.generate(String(this.id)));
 
-    var s = this.getService(Service.AccessoryInformation);
-    s.setCharacteristic(Characteristic.Manufacturer, "Indigo")
+    this.infoService = this.getService(Service.AccessoryInformation);
+    this.infoService.setCharacteristic(Characteristic.Manufacturer, "Indigo")
         .setCharacteristic(Characteristic.SerialNumber, String(this.id));
 
     if (this.type) {
-        s.setCharacteristic(Characteristic.Model, this.type);
+        this.infoService.setCharacteristic(Characteristic.Model, this.type);
     }
 
     if (this.versByte) {
-        s.setCharacteristic(Characteristic.FirmwareRevision, this.versByte);
+        this.infoService.setCharacteristic(Characteristic.FirmwareRevision, this.versByte);
     }
+
+    this.service = this.addService(serviceType, this.name);
 }
 
 // A set context that indicates this is from an update made by this plugin, so do not call the Indigo RESTful API with a put request
@@ -506,10 +509,14 @@ IndigoAccessory.prototype.getStatus = function(callback, updateCallback) {
     this.platform.indigoRequestJSON(this.deviceURL, "GET", null,
         function(error, json) {
             if (error) {
-                callback(error);
+                if (callback) {
+                    callback(error);
+                }
             } else {
                 this.updateFromJSON(json, updateCallback);
-                callback();
+                if (callback) {
+                    callback();
+                }
             }
         }.bind(this)
     );
@@ -524,7 +531,9 @@ IndigoAccessory.prototype.updateStatus = function(qs, callback, updateCallback) 
     this.platform.indigoRequest(this.deviceURL, "PUT", qs,
         function(error, response, body) {
             if (error) {
-                callback(error);
+                if (callback) {
+                    callback(error);
+                }
             } else {
                 this.getStatus(callback, updateCallback);
             }
@@ -538,10 +547,14 @@ IndigoAccessory.prototype.query = function(key, callback) {
     this.getStatus(
         function(error) {
             if (error) {
-                callback(error);
+                if (callback) {
+                    callback(error);
+                }
             } else {
                 this.log("%s: query(%s) => %s", this.name, key, this[key]);
-                callback(undefined, this[key]);
+                if (callback) {
+                    callback(undefined, this[key]);
+                }
             }
         }.bind(this)
     );
@@ -592,14 +605,21 @@ IndigoAccessory.prototype.getOnState = function(callback) {
         this.getStatus(
             function(error) {
                 if (error) {
-                    callback(error);
+                    if (callback) {
+                        callback(error);
+                    }
                 } else {
                     var onState = (this.isOn) ? true : false;
                     this.log("%s: getOnState() => %s", this.name, onState);
-                    callback(undefined, onState);
+                    if (callback) {
+                        callback(undefined, onState);
+                    }
                 }
             }.bind(this)
         );
+    }
+    else if (callback) {
+        callback("Accessory does not support on/off");
     }
 };
 
@@ -610,10 +630,12 @@ IndigoAccessory.prototype.getOnState = function(callback) {
 IndigoAccessory.prototype.setOnState = function(onState, callback, context) {
     this.log("%s: setOnState(%s)", this.name, onState);
     if (context == IndigoAccessory.REFRESH_CONTEXT) {
-        callback();
+        if (callback) {
+            callback();
+        }
     } else if (this.typeSupportsOnOff) {
         this.updateStatus({ isOn: (onState) ? 1 : 0 }, callback);
-    } else {
+    } else if (callback) {
         callback("Accessory does not support on/off");
     }
 };
@@ -627,10 +649,9 @@ IndigoAccessory.prototype.setOnState = function(onState, callback, context) {
 // json: the json that describes this device
 //
 function IndigoSwitchAccessory(platform, deviceURL, json) {
-    IndigoAccessory.call(this, platform, deviceURL, json);
+    IndigoAccessory.call(this, platform, Service.Switch, deviceURL, json);
 
-    var s = this.addService(new Service.Switch(this.name));
-    s.getCharacteristic(Characteristic.On)
+    this.service.getCharacteristic(Characteristic.On)
         .on('get', this.getOnState.bind(this))
         .on('set', this.setOnState.bind(this));
 }
@@ -639,8 +660,7 @@ function IndigoSwitchAccessory(platform, deviceURL, json) {
 // isOn: new value of isOn property
 IndigoSwitchAccessory.prototype.update_isOn = function(isOn) {
     var onState = (isOn) ? true : false;
-    this.getService(Service.Switch)
-        .getCharacteristic(Characteristic.On)
+    this.service.getCharacteristic(Characteristic.On)
         .setValue(onState, undefined, IndigoAccessory.REFRESH_CONTEXT);
 };
 
@@ -653,13 +673,12 @@ IndigoSwitchAccessory.prototype.update_isOn = function(isOn) {
 // json: the json that describes this device
 //
 function IndigoLockAccessory(platform, deviceURL, json) {
-    IndigoAccessory.call(this, platform, deviceURL, json);
+    IndigoAccessory.call(this, platform, Service.LockMechanism, deviceURL, json);
 
-    var s = this.addService(new Service.LockMechanism(this.name));
-    s.getCharacteristic(Characteristic.LockCurrentState)
+    this.service.getCharacteristic(Characteristic.LockCurrentState)
         .on('get', this.getLockCurrentState.bind(this));
 
-    s.getCharacteristic(Characteristic.LockTargetState)
+    this.service.getCharacteristic(Characteristic.LockTargetState)
         .on('get', this.getLockTargetState.bind(this))
         .on('set', this.setLockTargetState.bind(this));
 }
@@ -673,14 +692,21 @@ IndigoLockAccessory.prototype.getLockCurrentState = function(callback) {
         this.getStatus(
             function(error) {
                 if (error) {
-                    callback(error);
+                    if (callback) {
+                        callback(error);
+                    }
                 } else {
                     var lockState = (this.isOn) ? Characteristic.LockCurrentState.SECURED : Characteristic.LockCurrentState.UNSECURED;
                     this.log("%s: getLockCurrentState() => %s", this.name, lockState);
-                    callback(undefined, lockState);
+                    if (callback) {
+                        callback(undefined, lockState);
+                    }
                 }
             }.bind(this)
         );
+    }
+    else if (callback) {
+        callback("Accessory does not support on/off");
     }
 };
 
@@ -693,14 +719,21 @@ IndigoLockAccessory.prototype.getLockTargetState = function(callback) {
         this.getStatus(
             function(error) {
                 if (error) {
-                    callback(error);
+                    if (callback) {
+                        callback(error);
+                    }
                 } else {
                     var lockState = (this.isOn) ? Characteristic.LockTargetState.SECURED : Characteristic.LockTargetState.UNSECURED;
                     this.log("%s: getLockTargetState() => %s", this.name, lockState);
-                    callback(undefined, lockState);
+                    if (callback) {
+                        callback(undefined, lockState);
+                    }
                 }
             }.bind(this)
         );
+    }
+    else if (callback) {
+        callback("Accessory does not support on/off");
     }
 };
 
@@ -712,22 +745,23 @@ IndigoLockAccessory.prototype.getLockTargetState = function(callback) {
 IndigoLockAccessory.prototype.setLockTargetState = function(lockState, callback, context) {
     this.log("%s: setLockTargetState(%s)", this.name, lockState);
     if (context == IndigoAccessory.REFRESH_CONTEXT) {
-        callback();
+        if (callback) {
+            callback();
+        }
     }
     else if (this.typeSupportsOnOff) {
         this.updateStatus({ isOn: (lockState == Characteristic.LockTargetState.SECURED) ? 1 : 0 }, callback);
         // Update current state to match target state
         setTimeout(
             function() {
-                this.getService(Service.LockMechanism)
-                    .getCharacteristic(Characteristic.LockCurrentState)
+                this.service.getCharacteristic(Characteristic.LockCurrentState)
                     .setValue((lockState == Characteristic.LockTargetState.SECURED) ?
                                 Characteristic.LockCurrentState.SECURED : Characteristic.LockCurrentState.UNSECURED,
                                 undefined, IndigoAccessory.REFRESH_CONTEXT);
             }.bind(this),
         1000);
     }
-    else {
+    else if (callback) {
         callback("Accessory does not support on/off");
     }
 };
@@ -736,13 +770,11 @@ IndigoLockAccessory.prototype.setLockTargetState = function(lockState, callback,
 // isOn: new value of isOn property
 IndigoLockAccessory.prototype.update_isOn = function(isOn) {
     var lockState = (isOn) ? Characteristic.LockCurrentState.SECURED : Characteristic.LockCurrentState.UNSECURED;
-    this.getService(Service.LockMechanism)
-        .getCharacteristic(Characteristic.LockCurrentState)
+    this.service.getCharacteristic(Characteristic.LockCurrentState)
         .setValue(lockState, undefined, IndigoAccessory.REFRESH_CONTEXT);
 
     lockState = (isOn) ? Characteristic.LockTargetState.SECURED : Characteristic.LockTargetState.UNSECURED;
-    this.getService(Service.LockMechanism)
-        .getCharacteristic(Characteristic.LockTargetState)
+    this.service.getCharacteristic(Characteristic.LockTargetState)
         .setValue(lockState, undefined, IndigoAccessory.REFRESH_CONTEXT);
 };
 
@@ -751,22 +783,20 @@ IndigoLockAccessory.prototype.update_isOn = function(isOn) {
 // Indigo Position Accessory (Door, Window, or Window Covering)
 //
 // platform: the HomeKit platform
+// serviceType: the constructor for the type of HAP service to create
 // deviceURL: the path of the RESTful call for this device, relative to the base URL in the configuration, starting with a /
 // json: the json that describes this device
-// service: the HomeKit service
 //
-function IndigoPositionAccessory(platform, deviceURL, json, service) {
-    IndigoAccessory.call(this, platform, deviceURL, json);
+function IndigoPositionAccessory(platform, serviceType, deviceURL, json) {
+    IndigoAccessory.call(this, platform, serviceType, deviceURL, json);
 
-    var s = this.addService(service);
-    this.service = s;
-    s.getCharacteristic(Characteristic.CurrentPosition)
+    this.service.getCharacteristic(Characteristic.CurrentPosition)
         .on('get', this.getPosition.bind(this));
 
-    s.getCharacteristic(Characteristic.PositionState)
+    this.service.getCharacteristic(Characteristic.PositionState)
         .on('get', this.getPositionState.bind(this));
 
-    s.getCharacteristic(Characteristic.TargetPosition)
+    this.service.getCharacteristic(Characteristic.TargetPosition)
         .on('get', this.getPosition.bind(this))
         .on('set', this.setTargetPosition.bind(this));
 }
@@ -780,17 +810,24 @@ IndigoPositionAccessory.prototype.getPosition = function(callback) {
         this.getStatus(
             function(error) {
                 if (error) {
-                    callback(error);
+                    if (callback) {
+                        callback(error);
+                    }
                 } else {
                     var position = (this.isOn) ? 100 : 0;
                     if (this.typeSupportsDim) {
                         position = this.brightness;
                     }
                     this.log("%s: getPosition() => %s", this.name, position);
-                    callback(undefined, position);
+                    if (callback) {
+                        callback(undefined, position);
+                    }
                 }
             }.bind(this)
         );
+    }
+    else if (callback) {
+        callback("Accessory does not support on/off or dim");
     }
 };
 
@@ -799,9 +836,14 @@ IndigoPositionAccessory.prototype.getPosition = function(callback) {
 //           error: error message or undefined if no error
 //           positionState: always Characteristic.PositionState.STOPPED
 IndigoPositionAccessory.prototype.getPositionState = function(callback) {
-    if (this.typeSupportsOnOff) {
+    if (this.typeSupportsOnOff || this.typeSupportsDim) {
         this.log("%s: getPositionState() => %s", this.name, Characteristic.PositionState.STOPPED);
-        callback(undefined, Characteristic.PositionState.STOPPED);
+        if (callback) {
+            callback(undefined, Characteristic.PositionState.STOPPED);
+        }
+    }
+    else if (callback) {
+        callback("Accessory does not support on/off or dim");
     }
 };
 
@@ -813,7 +855,9 @@ IndigoPositionAccessory.prototype.getPositionState = function(callback) {
 IndigoPositionAccessory.prototype.setTargetPosition = function(position, callback, context) {
     this.log("%s: setTargetPosition(%s)", this.name, position);
     if (context == IndigoAccessory.REFRESH_CONTEXT) {
-        callback();
+        if (callback) {
+            callback();
+        }
     }
     else if (this.typeSupportsOnOff || this.typeSupportsDim) {
         if (this.typeSupportsDim) {
@@ -830,7 +874,7 @@ IndigoPositionAccessory.prototype.setTargetPosition = function(position, callbac
             }.bind(this),
         1000);
     }
-    else {
+    else if (callback) {
         callback("Accessory does not support on/off or dim");
     }
 };
@@ -906,17 +950,16 @@ function IndigoWindowCoveringAccessory(platform, deviceURL, json) {
 // json: the json that describes this device
 //
 function IndigoGarageDoorAccessory(platform, deviceURL, json) {
-    IndigoAccessory.call(this, platform, deviceURL, json);
+    IndigoAccessory.call(this, platform, Service.GarageDoorOpener, deviceURL, json);
 
-    var s = this.addService(new Service.GarageDoorOpener(this.name));
-    s.getCharacteristic(Characteristic.CurrentDoorState)
+    this.service.getCharacteristic(Characteristic.CurrentDoorState)
         .on('get', this.getCurrentDoorState.bind(this));
 
-    s.getCharacteristic(Characteristic.TargetDoorState)
+    this.service.getCharacteristic(Characteristic.TargetDoorState)
         .on('get', this.getTargetDoorState.bind(this))
         .on('set', this.setTargetDoorState.bind(this));
 
-    s.getCharacteristic(Characteristic.ObstructionDetected)
+    this.service.getCharacteristic(Characteristic.ObstructionDetected)
         .on('get', this.getObstructionDetected.bind(this));
 }
 
@@ -929,14 +972,21 @@ IndigoGarageDoorAccessory.prototype.getCurrentDoorState = function(callback) {
         this.getStatus(
             function(error) {
                 if (error) {
-                    callback(error);
+                    if (callback) {
+                        callback(error);
+                    }
                 } else {
                     var doorState = (this.isOn) ? Characteristic.CurrentDoorState.OPEN : Characteristic.CurrentDoorState.CLOSED;
                     this.log("%s: getPosition() => %s", this.name, doorState);
-                    callback(undefined, doorState);
+                    if (callback) {
+                        callback(undefined, doorState);
+                    }
                 }
             }.bind(this)
         );
+    }
+    else if (callback) {
+        callback("Accessory does not support on/off");
     }
 };
 
@@ -949,14 +999,21 @@ IndigoGarageDoorAccessory.prototype.getTargetDoorState = function(callback) {
         this.getStatus(
             function(error) {
                 if (error) {
-                    callback(error);
+                    if (callback) {
+                        callback(error);
+                    }
                 } else {
                     var doorState = (this.isOn) ? Characteristic.TargetDoorState.OPEN : Characteristic.TargetDoorState.CLOSED;
                     this.log("%s: getPosition() => %s", this.name, doorState);
-                    callback(undefined, doorState);
+                    if (callback) {
+                        callback(undefined, doorState);
+                    }
                 }
             }.bind(this)
         );
+    }
+    else if (callback) {
+        callback("Accessory does not support on/off");
     }
 };
 
@@ -968,22 +1025,23 @@ IndigoGarageDoorAccessory.prototype.getTargetDoorState = function(callback) {
 IndigoGarageDoorAccessory.prototype.setTargetDoorState = function(doorState, callback, context) {
     this.log("%s: setTargetPosition(%s)", this.name, doorState);
     if (context == IndigoAccessory.REFRESH_CONTEXT) {
-        callback();
+        if (callback) {
+            callback();
+        }
     }
     else if (this.typeSupportsOnOff) {
         this.updateStatus({ isOn: (doorState == Characteristic.TargetDoorState.OPEN) ? 1 : 0 }, callback);
         // Update current state to match target state
         setTimeout(
             function() {
-                this.getService(Service.GarageDoorOpener)
-                    .getCharacteristic(Characteristic.CurrentDoorState)
+                this.service.getCharacteristic(Characteristic.CurrentDoorState)
                     .setValue((doorState == Characteristic.TargetDoorState.OPEN) ?
                                 Characteristic.CurrentDoorState.OPEN : Characteristic.CurrentDoorState.CLOSED,
                                 undefined, IndigoAccessory.REFRESH_CONTEXT);
             }.bind(this),
         1000);
     }
-    else {
+    else if (callback) {
         callback("Accessory does not support on/off");
     }
 };
@@ -995,7 +1053,12 @@ IndigoGarageDoorAccessory.prototype.setTargetDoorState = function(doorState, cal
 IndigoGarageDoorAccessory.prototype.getObstructionDetected = function(callback) {
     if (this.typeSupportsOnOff) {
         this.log("%s: getObstructionDetected() => %s", this.name, false);
-        callback(undefined, false);
+        if (callback) {
+            callback(undefined, false);
+        }
+    }
+    else if (callback) {
+        callback("Accessory does not support on/off");
     }
 };
 
@@ -1003,13 +1066,11 @@ IndigoGarageDoorAccessory.prototype.getObstructionDetected = function(callback) 
 // isOn: new value of isOn property
 IndigoGarageDoorAccessory.prototype.update_isOn = function(isOn) {
     var doorState = (isOn) ? Characteristic.CurrentDoorState.OPEN : Characteristic.CurrentDoorState.CLOSED;
-    this.getService(Service.GarageDoorOpener)
-        .getCharacteristic(Characteristic.CurrentDoorState)
+    this.service.getCharacteristic(Characteristic.CurrentDoorState)
         .setValue(doorState, undefined, IndigoAccessory.REFRESH_CONTEXT);
 
     doorState = (isOn) ? Characteristic.TargetDoorState.OPEN : Characteristic.TargetDoorState.CLOSED;
-    this.getService(Service.GarageDoorOpener)
-        .getCharacteristic(Characteristic.TargetDoorState)
+    this.service.getCharacteristic(Characteristic.TargetDoorState)
         .setValue(doorState, undefined, IndigoAccessory.REFRESH_CONTEXT);
 };
 
@@ -1022,15 +1083,14 @@ IndigoGarageDoorAccessory.prototype.update_isOn = function(isOn) {
 // json: the json that describes this device
 //
 function IndigoLightAccessory(platform, deviceURL, json) {
-    IndigoAccessory.call(this, platform, deviceURL, json);
+    IndigoAccessory.call(this, platform, Service.Lightbulb, deviceURL, json);
 
-    var s = this.addService(new Service.Lightbulb(this.name));
-    s.getCharacteristic(Characteristic.On)
+    this.service.getCharacteristic(Characteristic.On)
         .on('get', this.getOnState.bind(this))
         .on('set', this.setOnState.bind(this));
 
     if (this.typeSupportsDim) {
-        s.getCharacteristic(Characteristic.Brightness)
+        this.service.getCharacteristic(Characteristic.Brightness)
             .on('get', this.getBrightness.bind(this))
             .on('set', this.setBrightness.bind(this));
     }
@@ -1043,7 +1103,7 @@ function IndigoLightAccessory(platform, deviceURL, json) {
 IndigoLightAccessory.prototype.getBrightness = function(callback) {
     if (this.typeSupportsDim) {
         this.query("brightness", callback);
-    } else {
+    } else if (callback) {
         callback("Accessory does not support brightness");
     }
 };
@@ -1055,14 +1115,16 @@ IndigoLightAccessory.prototype.getBrightness = function(callback) {
 IndigoLightAccessory.prototype.setBrightness = function(brightness, callback, context) {
     this.log("%s: setBrightness(%d)", this.name, brightness);
     if (context == IndigoAccessory.REFRESH_CONTEXT) {
-        callback();
+        if (callback) {
+            callback();
+        }
     }
     else if (this.typeSupportsDim) {
         if (brightness >= 0 && brightness <= 100) {
             this.updateStatus({brightness: brightness}, callback);
         }
     }
-    else {
+    else if (callback) {
         callback("Accessory does not support brightness");
     }
 };
@@ -1071,16 +1133,14 @@ IndigoLightAccessory.prototype.setBrightness = function(brightness, callback, co
 // isOn: new value of isOn property
 IndigoLightAccessory.prototype.update_isOn = function(isOn) {
     var onState = (isOn) ? true : false;
-    this.getService(Service.Lightbulb)
-        .getCharacteristic(Characteristic.On)
+    this.service.getCharacteristic(Characteristic.On)
         .setValue(onState, undefined, IndigoAccessory.REFRESH_CONTEXT);
 };
 
 // Update HomeKit state to match state of Indigo's brightness property
 // brightness: new value of brightness property
 IndigoLightAccessory.prototype.update_brightness = function(brightness) {
-    this.getService(Service.Lightbulb)
-        .getCharacteristic(Characteristic.Brightness)
+    this.service.getCharacteristic(Characteristic.Brightness)
         .setValue(brightness, undefined, IndigoAccessory.REFRESH_CONTEXT);
 };
 
@@ -1093,14 +1153,13 @@ IndigoLightAccessory.prototype.update_brightness = function(brightness) {
 // json: the json that describes this device
 //
 function IndigoFanAccessory(platform, deviceURL, json) {
-    IndigoAccessory.call(this, platform, deviceURL, json);
+    IndigoAccessory.call(this, platform, Service.Fan, deviceURL, json);
 
-    var s = this.addService(new Service.Fan(this.name));
-    s.getCharacteristic(Characteristic.On)
+    this.service.getCharacteristic(Characteristic.On)
         .on('get', this.getOnState.bind(this))
         .on('set', this.setOnState.bind(this));
 
-    s.getCharacteristic(Characteristic.RotationSpeed)
+    this.service.getCharacteristic(Characteristic.RotationSpeed)
         .on('get', this.getRotationSpeed.bind(this))
         .on('set', this.setRotationSpeed.bind(this));
 }
@@ -1114,14 +1173,16 @@ IndigoFanAccessory.prototype.getRotationSpeed = function(callback) {
         this.query("speedIndex",
             function(error, speedIndex) {
                 if (error) {
-                    callback(error);
-                } else {
+                    if (callback) {
+                        callback(error);
+                    }
+                } else if (callback) {
                     callback(undefined, (speedIndex / 3.0) * 100.0);
                 }
             }
         );
     }
-    else {
+    else if (callback) {
         callback("Accessory does not support rotation speed");
     }
 };
@@ -1130,9 +1191,11 @@ IndigoFanAccessory.prototype.getRotationSpeed = function(callback) {
 // rotationSpeed: the rotation speed, from 0 (off) to 100 (full speed)
 // callback: invokes callback(error), error is undefined if no error occurred
 // context: if equal to IndigoAccessory.REFRESH_CONTEXT, will not call the Indigo RESTful API to update the device, otherwise will
-IndigoFanAccessory.prototype.setRotationSpeed = function(rotationSpeed, callback) {
+IndigoFanAccessory.prototype.setRotationSpeed = function(rotationSpeed, callback, context) {
     if (context == IndigoAccessory.REFRESH_CONTEXT) {
-        callback();
+        if (callback) {
+            callback();
+        }
     }
     else if (this.typeSupportsSpeedControl) {
         if (rotationSpeed >= 0.0 && rotationSpeed <= 100.0) {
@@ -1147,16 +1210,23 @@ IndigoFanAccessory.prototype.setRotationSpeed = function(rotationSpeed, callback
             this.updateStatus({speedIndex: speedIndex}, callback);
         }
     }
-    else {
+    else if (callback) {
         callback("Accessory does not support rotation speed");
     }
 };
 
+// Update HomeKit state to match state of Indigo's isOn property
+// isOn: new value of isOn property
+IndigoFanAccessory.prototype.update_isOn = function(isOn) {
+    var onState = (isOn) ? true : false;
+    this.service.getCharacteristic(Characteristic.On)
+        .setValue(onState, undefined, IndigoAccessory.REFRESH_CONTEXT);
+};
+
 // Update HomeKit state to match state of Indigo's speedIndex property
 // speedIndex: new value of speedIndex property
-IndigoLightAccessory.prototype.update_speedIndex = function(speedIndex) {
-    this.getService(Service.Fan)
-        .getCharacteristic(Characteristic.RotationSpeed)
+IndigoFanAccessory.prototype.update_speedIndex = function(speedIndex) {
+    this.service.getCharacteristic(Characteristic.RotationSpeed)
         .setValue((speedIndex / 3.0) * 100.0, undefined, IndigoAccessory.REFRESH_CONTEXT);
 };
 
@@ -1169,7 +1239,7 @@ IndigoLightAccessory.prototype.update_speedIndex = function(speedIndex) {
 // json: the json that describes this device
 //
 function IndigoThermostatAccessory(platform, deviceURL, json, thermostatsInCelsius) {
-    IndigoAccessory.call(this, platform, deviceURL, json);
+    IndigoAccessory.call(this, platform, Service.Thermostat, deviceURL, json);
 
     this.thermostatsInCelsius = thermostatsInCelsius;
 
@@ -1177,103 +1247,160 @@ function IndigoThermostatAccessory(platform, deviceURL, json, thermostatsInCelsi
         Characteristic.TemperatureDisplayUnits.CELSIUS :
         Characteristic.TemperatureDisplayUnits.FAHRENHEIT;
 
-    var s = this.addService(new Service.Thermostat(this.name));
-    s.getCharacteristic(Characteristic.CurrentHeatingCoolingState)
+    this.service.getCharacteristic(Characteristic.CurrentHeatingCoolingState)
         .on('get', this.getCurrentHeatingCooling.bind(this));
 
-    s.getCharacteristic(Characteristic.TargetHeatingCoolingState)
+    this.service.getCharacteristic(Characteristic.TargetHeatingCoolingState)
         .on('get', this.getTargetHeatingCooling.bind(this))
         .on('set', this.setTargetHeatingCooling.bind(this));
 
-    s.getCharacteristic(Characteristic.CurrentTemperature)
+    this.service.getCharacteristic(Characteristic.CurrentTemperature)
         .on('get', this.getCurrentTemperature.bind(this));
 
-    s.getCharacteristic(Characteristic.TargetTemperature)
+    this.service.getCharacteristic(Characteristic.TargetTemperature)
         .on('get', this.getTargetTemperature.bind(this))
         .on('set', this.setTargetTemperature.bind(this));
 
-    s.getCharacteristic(Characteristic.TemperatureDisplayUnits)
+    this.service.getCharacteristic(Characteristic.TemperatureDisplayUnits)
         .on('get', this.getTemperatureDisplayUnits.bind(this))
         .on('set', this.setTemperatureDisplayUnits.bind(this));
 
-    s.getCharacteristic(Characteristic.CoolingThresholdTemperature)
+    this.service.getCharacteristic(Characteristic.CoolingThresholdTemperature)
         .on('get', this.getCoolingThresholdTemperature.bind(this))
         .on('set', this.setCoolingThresholdTemperature.bind(this));
 
-    s.getCharacteristic(Characteristic.HeatingThresholdTemperature)
+    this.service.getCharacteristic(Characteristic.HeatingThresholdTemperature)
         .on('get', this.getHeatingThresholdTemperature.bind(this))
         .on('set', this.setHeatingThresholdTemperature.bind(this));
 
     if (this.displayHumidityInRemoteUI) {
-        s.getCharacteristic(Characteristic.CurrentRelativeHumidity)
+        this.service.getCharacteristic(Characteristic.CurrentRelativeHumidity)
             .on('get', this.getCurrentRelativeHumidity.bind(this));
     }
 }
 
+// Determine the current heating/cooling state
+// returns one of Characteristic.CurrentHeatingCoolingState.{OFF,HEAT,COOL}
+IndigoThermostatAccessory.prototype.determineCurrentHeatingCoolingState = function() {
+    var mode = Characteristic.CurrentHeatingCoolingState.OFF;
+    if (this.hvacHeaterIsOn) {
+        mode = Characteristic.CurrentHeatingCoolingState.HEAT;
+    } else if (this.hvacCoolerIsOn) {
+        mode = Characteristic.CurrentHeatingCoolingState.COOL;
+    }
+    return mode;
+};
+
+// Determine the target heating/cooling state
+// returns one of Characteristic.TargetHeatingCoolingState.{OFF,HEAT,COOL,AUTO}
+IndigoThermostatAccessory.prototype.determineTargetHeatingCoolingState = function() {
+    var mode = Characteristic.TargetHeatingCoolingState.OFF;
+    if (this.hvacOperationModeIsHeat || this.hvacOperationModeIsProgramHeat) {
+        mode = Characteristic.TargetHeatingCoolingState.HEAT;
+    } else if (this.hvacOperationModeIsCool || this.hvacOperationModeIsProgramCool) {
+        mode = Characteristic.TargetHeatingCoolingState.COOL;
+    } else if (this.hvacOperationModeIsAuto || this.hvacOperationModeIsProgramAuto) {
+        mode = Characteristic.TargetHeatingCoolingState.AUTO;
+    }
+    return mode;
+};
+
+// Get the current heating/cooling state of the accessory
+// callback: invokes callback(error, mode)
+//           error: error message or undefined if no error
+//           mode: one of Characteristic.CurrentHeatingCoolingState.{OFF,HEAT,COOL}
 IndigoThermostatAccessory.prototype.getCurrentHeatingCooling = function(callback) {
-    this.getStatus(
-        function(error) {
-            if (error) {
-                callback(error);
-            } else {
-                var mode = Characteristic.CurrentHeatingCoolingState.OFF;
-                if (this.hvacHeaterIsOn) {
-                    mode = Characteristic.CurrentHeatingCoolingState.HEAT;
-                } else if (this.hvacCoolerIsOn) {
-                    mode = Characteristic.CurrentHeatingCoolingState.COOL;
+    if (this.typeSupportsHVAC) {
+        this.getStatus(
+            function (error) {
+                if (error) {
+                    if (callback) {
+                        callback(error);
+                    }
+                } else {
+                    var mode = this.determineCurrentHeatingCoolingState();
+                    this.log("%s: getCurrentHeatingCooling() => %s", this.name, mode);
+                    if (callback) {
+                        callback(undefined, mode);
+                    }
                 }
-                this.log("%s: getCurrentHeatingCooling() => %s", this.name, mode);
-                callback(undefined, mode);
-            }
-        }.bind(this)
-    );
+            }.bind(this)
+        );
+    }
+    else if (callback) {
+        callback("Accessory does not support HVAC");
+    }
 };
 
+// Get the target heating/cooling state of the accessory
+// callback: invokes callback(error, mode)
+//           error: error message or undefined if no error
+//           mode: one of Characteristic.TargetHeatingCoolingState.{OFF,HEAT,COOL,AUTO}
 IndigoThermostatAccessory.prototype.getTargetHeatingCooling = function(callback) {
-    this.getStatus(
-        function(error) {
-            if (error) {
-                callback(error);
-            } else {
-                var mode = Characteristic.TargetHeatingCoolingState.OFF;
-                if (this.hvacOperationModeIsHeat || this.hvacOperationModeIsProgramHeat) {
-                    mode = Characteristic.TargetHeatingCoolingState.HEAT;
-                } else if (this.hvacOperationModeIsCool || this.hvacOperationModeIsProgramCool) {
-                    mode = Characteristic.TargetHeatingCoolingState.COOL;
-                } else if (this.hvacOperationModeIsAuto || this.hvacOperationModeIsProgramAuto) {
-                    mode = Characteristic.TargetHeatingCoolingState.AUTO;
+    if (this.typeSupportsHVAC) {
+        this.getStatus(
+            function (error) {
+                if (error) {
+                    if (callback) {
+                        callback(error);
+                    }
+                } else {
+                    var mode = this.determineTargetHeatingCoolingState();
+                    this.log("%s: getTargetHeatingCooling() => %s", this.name, mode);
+                    if (callback) {
+                        callback(undefined, mode);
+                    }
                 }
-                this.log("%s: getTargetHeatingCooling() => %s", this.name, mode);
-                callback(undefined, mode);
-            }
-        }.bind(this)
-    );
+            }.bind(this)
+        );
+    }
+    else if (callback) {
+        callback("Accessory does not support HVAC");
+    }
 };
 
-IndigoThermostatAccessory.prototype.setTargetHeatingCooling = function(mode, callback) {
+// Set the target heating/cooling state of the accessory
+// mode: one of Characteristic.TargetHeatingCoolingState.{OFF,HEAT,COOL,AUTO}
+// callback: invokes callback(error), error is undefined if no error occurred
+// context: if equal to IndigoAccessory.REFRESH_CONTEXT, will not call the Indigo RESTful API to update the device, otherwise will
+IndigoThermostatAccessory.prototype.setTargetHeatingCooling = function(mode, callback, context) {
     this.log("%s: setTargetHeatingCooling(%s)", this.name, mode);
-    var qs;
-    if (mode == Characteristic.TargetHeatingCoolingState.OFF) {
-        qs = { hvacOperationModeIsOff: "true" };
+    if (context == IndigoAccessory.REFRESH_CONTEXT) {
+        if (callback) {
+            callback();
+        }
     }
-    else if (mode == Characteristic.TargetHeatingCoolingState.HEAT) {
-        qs = { hvacOperationModeIsHeat: "true" };
-    }
-    else if (mode == Characteristic.TargetHeatingCoolingState.COOL) {
-        qs = { hvacOperationModeIsCool: "true" };
-    }
-    else if (mode == Characteristic.TargetHeatingCoolingState.AUTO) {
-        qs = { hvacOperationModeIsAuto: "true" };
-    }
+    else if (this.typeSupportsHVAC) {
+        var qs;
+        if (mode == Characteristic.TargetHeatingCoolingState.OFF) {
+            qs = { hvacOperationModeIsOff: "true" };
+        }
+        else if (mode == Characteristic.TargetHeatingCoolingState.HEAT) {
+            qs = { hvacOperationModeIsHeat: "true" };
+        }
+        else if (mode == Characteristic.TargetHeatingCoolingState.COOL) {
+            qs = { hvacOperationModeIsCool: "true" };
+        }
+        else if (mode == Characteristic.TargetHeatingCoolingState.AUTO) {
+            qs = { hvacOperationModeIsAuto: "true" };
+        }
 
-    if (qs) {
-        this.updateStatus(qs, callback);
-    } else {
-        callback("Unknown target heating/cooling state");
+        if (qs) {
+            this.updateStatus(qs, callback);
+        } else if (callback) {
+            callback("Unknown target heating/cooling state");
+        }
+    }
+    else if (callback) {
+        callback("Accessory does not support HVAC");
     }
 };
 
 // Note: HomeKit wants all temperature values in celsius, so convert if needed
+
+// Converts a celsius temperature into Indigo's units (F or C, depending on setting)
+// temperature: temperature in degrees celsius
+// returns: temperature in Indigo's units
 IndigoThermostatAccessory.prototype.celsiusToIndigoTemp = function(temperature) {
     if (this.thermostatsInCelsius) {
         return (temperature);
@@ -1282,6 +1409,9 @@ IndigoThermostatAccessory.prototype.celsiusToIndigoTemp = function(temperature) 
     }
 }
 
+// Converts a temperature in Indigo's units (F or C, depending on setting) into celsius
+// temperature: temperature in Indigo's units
+// returns: temperature in degrees celsius
 IndigoThermostatAccessory.prototype.indigoTempToCelsius = function(temperature) {
     if (this.thermostatsInCelsius) {
         return (temperature);
@@ -1290,113 +1420,277 @@ IndigoThermostatAccessory.prototype.indigoTempToCelsius = function(temperature) 
     }
 }
 
+// Invokes the Indigo RESTful API to get a temperature value
+// key: the Indigo RESTful API response JSON key of the temperature value
+// callback: invokes callback(error, temperature)
+//           error: error message or undefined if no error
+//           temperature: the temperature in degrees celsius
 IndigoThermostatAccessory.prototype.getTemperatureValue = function(key, callback) {
-    this.query(key,
-        function(error, temperature) {
-            if (error) {
-                callback(error);
-            } else {
-                var t = this.indigoTempToCelsius(temperature);
-                this.log("%s: getTemperatureValue(%s) => %s", this.name, key, t);
-                callback(undefined, t);
-            }
-        }.bind(this)
-    );
+    if (this.typeSupportsHVAC) {
+        this.query(key,
+            function(error, temperature) {
+                if (error) {
+                    if (callback) {
+                        callback(error);
+                    }
+                } else {
+                    var t = this.indigoTempToCelsius(temperature);
+                    this.log("%s: getTemperatureValue(%s) => %s", this.name, key, t);
+                    if (callback) {
+                        callback(undefined, t);
+                    }
+                }
+            }.bind(this)
+        );
+    }
+    else if (callback) {
+        callback("Accessory does not support HVAC");
+    }
 };
 
-IndigoThermostatAccessory.prototype.setTemperatureValue = function(key, temperature, callback) {
+// Invokes the Indigo RESTful API to update a temperature value
+// key: the Indigo RESTful API JSON key of the temperature value to update
+// temperature: the temperature in degrees celsius
+// callback: invokes callback(error), error is undefined if no error occurred
+// context: if equal to IndigoAccessory.REFRESH_CONTEXT, will not call the Indigo RESTful API to update the device, otherwise will
+IndigoThermostatAccessory.prototype.setTemperatureValue = function(key, temperature, callback, context) {
     this.log("%s: setTemperatureValue(%s, %s)", this.name, key, temperature);
-    var qs = { };
-    qs[key] = this.celsiusToIndigoTemp(temperature);
-    this.updateStatus(qs, callback);
+    if (context == IndigoAccessory.REFRESH_CONTEXT) {
+        if (callback) {
+            callback();
+        }
+    }
+    else if (this.typeSupportsHVAC) {
+        var qs = { };
+        qs[key] = this.celsiusToIndigoTemp(temperature);
+        this.updateStatus(qs, callback);
+    }
+    else if (callback) {
+        callback("Accessory does not support HVAC");
+    }
 };
 
+
+// Get the current temperature of the accessory
+// callback: invokes callback(error, temperature)
+//           error: error message or undefined if no error
+//           temperature: the temperature in degrees celsius
 IndigoThermostatAccessory.prototype.getCurrentTemperature = function(callback) {
     this.getTemperatureValue("inputTemperatureVals", callback);
 };
 
+// Determine the target temperature of the accessory
+// If the thermostat is in heating mode, returns the heat setpoint in degrees celsius
+// If the thermostat is in cooling mode, returns the cool setpoint in degrees celsius
+// Otherwise, returns the average of the heat and cool setpoints in degrees celsius
+IndigoThermostatAccessory.prototype.determineTargetTemperature = function() {
+    var temperature;
+    if (this.hvacOperationModeIsHeat || this.hvacOperationModeIsProgramHeat) {
+        temperature = this.setpointHeat;
+    }
+    else if (this.hvacOperationModeIsCool || this.hvacOperationModeIsProgramCool) {
+        temperature = this.setpointCool;
+    }
+    else {
+        temperature = (this.setpointHeat + this.setpointCool) / 2.0;
+    }
+    return this.indigoTempToCelsius(temperature);
+}
+
+// Get the target temperature of the accessory
+// If the thermostat is in heating mode, it uses the heat setpoint
+// If the thermostat is in cooling mode, it uses the cool setpoint
+// Otherwise, it uses the average of the heat and cool setpoints
+// callback: invokes callback(error, temperature)
+//           error: error message or undefined if no error
+//           temperature: the temperature in degrees celsius
 IndigoThermostatAccessory.prototype.getTargetTemperature = function(callback) {
-    this.getStatus(
-        function(error) {
-            if (error) {
-                callback(error);
-            } else {
-                var temperature;
-                if (this.hvacOperationModeIsHeat || this.hvacOperationModeIsProgramHeat) {
-                    temperature = this.setpointHeat;
+    if (this.typeSupportsHVAC) {
+        this.getStatus(
+            function (error) {
+                if (error) {
+                    if (callback) {
+                        callback(error);
+                    }
+                } else {
+                    var t = this.determineTargetTemperature();
+                    this.log("%s: getTargetTemperature() => %s", this.name, t);
+                    if (callback) {
+                        callback(undefined, t);
+                    }
                 }
-                else if (this.hvacOperationModeIsCool || this.hvacOperationModeIsProgramCool) {
-                    temperature = this.setpointCool;
-                }
-                else {
-                    temperature = (this.setpointHeat + this.setpointCool) / 2.0;
-                }
-                var t = this.indigoTempToCelsius(temperature);
-                this.log("%s: getTargetTemperature() => %s", this.name, t);
-                callback(undefined, t);
-            }
-        }.bind(this)
-    );
+            }.bind(this)
+        );
+    }
+    else if (callback) {
+        callback("Accessory does not support HVAC");
+    }
 };
 
-IndigoThermostatAccessory.prototype.setTargetTemperature = function(temperature, callback) {
+// Set the target temperature of the accessory
+// If the thermostat is in heating mode, it sets the heat setpoint
+// If the thermostat is in cooling mode, it sets the cool setpoint
+// Otherwise, it sets the heat setpoint to 2 degrees celsius (5 degrees fahrenheit) below the target temperature,
+// and sets the cool setpoint to 2 degrees celsius (5 degrees fahrenheit) above the target temperature
+// temperature: the temperature in degrees celsius
+// callback: invokes callback(error), error is undefined if no error occurred
+// context: if equal to IndigoAccessory.REFRESH_CONTEXT, will not call the Indigo RESTful API to update the device, otherwise will
+IndigoThermostatAccessory.prototype.setTargetTemperature = function(temperature, callback, context) {
     this.log("%s: setTargetTemperature(%s)", this.name, temperature);
-    var t = this.celsiusToIndigoTemp(temperature);
-    this.getStatus(
-        function(error) {
-            if (error) {
-                callback(error);
-            } else {
-                var qs;
-                if (this.hvacOperationModeIsHeat) {
-                    qs = { setpointHeat: t };
+    if (context == IndigoAccessory.REFRESH_CONTEXT) {
+        if (callback) {
+            callback();
+        }
+    }
+    else if (this.typeSupportsHVAC) {
+        var t = this.celsiusToIndigoTemp(temperature);
+        this.getStatus(
+            function (error) {
+                if (error) {
+                    if (callback) {
+                        callback(error);
+                    }
+                } else {
+                    var qs;
+                    if (this.hvacOperationModeIsHeat) {
+                        qs = {setpointHeat: t};
+                    }
+                    else if (this.hvacOperationModeIsCool) {
+                        qs = {setpointCool: t};
+                    }
+                    else {
+                        var adjust = (this.thermostatsInCelsius) ? 2 : 5;
+                        qs = {setpointCool: t + adjust, setpointHeat: t - adjust};
+                    }
+                    this.updateStatus(qs, callback);
                 }
-                else if (this.hvacOperationModeIsCool) {
-                    qs = { setpointCool: t };
-                }
-                else {
-                    var adjust = (this.thermostatsInCelsius) ? 2 : 5;
-                    qs = { setpointCool: t + adjust, setpointHeat: t - adjust };
-                }
-                this.updateStatus(qs, callback);
-            }
-        }.bind(this)
-    );
+            }.bind(this)
+        );
+    }
+    else if (callback) {
+        callback("Accessory does not support HVAC");
+    }
 };
 
+// Get the temperature display units of the accessory
+// callback: invokes callback(error, units)
+//           error: error message or undefined if no error
+//           units: the temperature display units - one of TemperatureDisplayUnits.{CELSIUS,FAHRENHEIT}
 IndigoThermostatAccessory.prototype.getTemperatureDisplayUnits = function(callback) {
     this.log("%s: getTemperatureDisplayUnits() => %s", this.name, this.temperatureDisplayUnits);
-    callback(undefined, this.temperatureDisplayUnits);
+    if (callback) {
+        callback(undefined, this.temperatureDisplayUnits);
+    }
 };
 
+// Set the temperature display units of the accessory
+// units: the temperature display units - one of TemperatureDisplayUnits.{CELSIUS,FAHRENHEIT}
+// callback: invokes callback(error), error is undefined if no error occurred
 IndigoThermostatAccessory.prototype.setTemperatureDisplayUnits = function(units, callback) {
     this.log("%s: setTemperatureDisplayUnits(%s)", this.name, units);
     this.temperatureDisplayUnits = units;
-    callback();
+    if (callback) {
+        callback();
+    }
 };
 
+// Get the cooling threshold temperature of the accessory
+// callback: invokes callback(error, temperature)
+//           error: error message or undefined if no error
+//           temperature: the temperature in degrees celsius
 IndigoThermostatAccessory.prototype.getCoolingThresholdTemperature = function(callback) {
     this.getTemperatureValue("setpointCool", callback);
 };
 
-IndigoThermostatAccessory.prototype.setCoolingThresholdTemperature = function(temperature, callback) {
-    this.setTemperatureValue("setpointCool", temperature, callback);
+// Set the cooling threshold temperature of the accessory
+// temperature: the temperature in degrees celsius
+// callback: invokes callback(error), error is undefined if no error occurred
+// context: if equal to IndigoAccessory.REFRESH_CONTEXT, will not call the Indigo RESTful API to update the device, otherwise will
+IndigoThermostatAccessory.prototype.setCoolingThresholdTemperature = function(temperature, callback, context) {
+    this.setTemperatureValue("setpointCool", temperature, callback, context);
 };
 
+// Get the heating threshold temperature of the accessory
+// callback: invokes callback(error, temperature)
+//           error: error message or undefined if no error
+//           temperature: the temperature in degrees celsius
 IndigoThermostatAccessory.prototype.getHeatingThresholdTemperature = function(callback) {
     this.getTemperatureValue("setpointHeat", callback);
 };
 
-IndigoThermostatAccessory.prototype.setHeatingThresholdTemperature = function(temperature, callback) {
-    this.setTemperatureValue("setpointHeat", temperature, callback);
+// Set the heating threshold temperature of the accessory
+// temperature: the temperature in degrees celsius
+// callback: invokes callback(error), error is undefined if no error occurred
+// context: if equal to IndigoAccessory.REFRESH_CONTEXT, will not call the Indigo RESTful API to update the device, otherwise will
+IndigoThermostatAccessory.prototype.setHeatingThresholdTemperature = function(temperature, callback, context) {
+    this.setTemperatureValue("setpointHeat", temperature, callback, context);
 };
 
+// Get the current relative humidity of the accessory
+// callback: invokes callback(error, relativeHumidity)
+//           error: error message or undefined if no error
+//           relativeHumidity: the relative humidity
 IndigoThermostatAccessory.prototype.getCurrentRelativeHumidity = function(callback) {
     if (this.displayHumidityInRemoteUI) {
         this.query("inputHumidityVals", callback);
-    } else {
-        callback("Accessory does not support current relative humidity");
+    } else if (callback) {
+        callback("Accessory does not support relative humidity");
     }
+};
+
+// Update HomeKit state to match state of Indigo's hvacHeaterIsOn/hvacCoolerIsOn property
+// prop: new value of property
+IndigoThermostatAccessory.prototype.update_hvacHeaterIsOn =
+IndigoThermostatAccessory.prototype.update_hvacCoolerIsOn = function(prop) {
+    this.service.getCharacteristic(Characteristic.CurrentHeatingCoolingState)
+        .setValue(this.determineCurrentHeatingCoolingState(), undefined, IndigoAccessory.REFRESH_CONTEXT);
+};
+
+// Update HomeKit state to match state of Indigo's hvacOperationModeIsHeat/hvacOperationModeIsProgramHeat
+// hvacOperationModeIsCool/hvacOperationModeIsProgramCool/hvacOperationModeIsAuto/hvacOperationModeIsProgramAuto property
+// prop: new value of property
+IndigoThermostatAccessory.prototype.update_hvacOperationModeIsHeat =
+IndigoThermostatAccessory.prototype.update_hvacOperationModeIsProgramHeat =
+IndigoThermostatAccessory.prototype.update_hvacOperationModeIsCool =
+IndigoThermostatAccessory.prototype.update_hvacOperationModeIsProgramCool =
+IndigoThermostatAccessory.prototype.update_hvacOperationModeIsAuto =
+IndigoThermostatAccessory.prototype.update_hvacOperationModeIsProgramAuto = function(prop) {
+    this.service.getCharacteristic(Characteristic.TargetHeatingCoolingState)
+        .setValue(this.determineTargetHeatingCoolingState(), undefined, IndigoAccessory.REFRESH_CONTEXT);
+    this.service.getCharacteristic(Characteristic.TargetTemperature)
+        .setValue(this.determineTargetTemperature(), undefined, IndigoAccessory.REFRESH_CONTEXT);
+};
+
+// Update HomeKit state to match state of Indigo's inputTemperatureVals property
+// inputTemperatureVals: new value of inputTemperatureVals property
+IndigoThermostatAccessory.prototype.update_inputTemperatureVals = function(inputTemperatureVals) {
+    this.service.getCharacteristic(Characteristic.CurrentTemperature)
+        .setValue(this.indigoTempToCelsius(inputTemperatureVals), undefined, IndigoAccessory.REFRESH_CONTEXT);
+};
+
+// Update HomeKit state to match state of Indigo's setpointCool property
+// setpointCool: new value of setpointCool property
+IndigoThermostatAccessory.prototype.update_setpointCool = function(setpointCool) {
+    this.service.getCharacteristic(Characteristic.CoolingThresholdTemperature)
+        .setValue(this.indigoTempToCelsius(setpointCool), undefined, IndigoAccessory.REFRESH_CONTEXT);
+    this.service.getCharacteristic(Characteristic.TargetTemperature)
+        .setValue(this.determineTargetTemperature(), undefined, IndigoAccessory.REFRESH_CONTEXT);
+};
+
+// Update HomeKit state to match state of Indigo's setpointHeat property
+// setpointHeat: new value of setpointHeat property
+IndigoThermostatAccessory.prototype.update_setpointHeat = function(setpointHeat) {
+    this.service.getCharacteristic(Characteristic.HeatingThresholdTemperature)
+        .setValue(this.indigoTempToCelsius(setpointHeat), undefined, IndigoAccessory.REFRESH_CONTEXT);
+    this.service.getCharacteristic(Characteristic.TargetTemperature)
+        .setValue(this.determineTargetTemperature(), undefined, IndigoAccessory.REFRESH_CONTEXT);
+};
+
+// Update HomeKit state to match state of Indigo's inputHumidityVals property
+// inputHumidityVals: new value of inputHumidityVals property
+IndigoThermostatAccessory.prototype.update_inputHumidityVals = function(inputHumidityVals) {
+    this.service.getCharacteristic(Characteristic.CurrentRelativeHumidity)
+        .setValue(inputHumidityVals, undefined, IndigoAccessory.REFRESH_CONTEXT);
 };
 
 
@@ -1408,10 +1702,9 @@ IndigoThermostatAccessory.prototype.getCurrentRelativeHumidity = function(callba
 // json: the json that describes this device
 //
 function IndigoActionAccessory(platform, deviceURL, json) {
-    IndigoAccessory.call(this, platform, deviceURL, json);
+    IndigoAccessory.call(this, platform, Service.Switch, deviceURL, json);
 
-    this.addService(new Service.Switch(this.name))
-        .getCharacteristic(Characteristic.On)
+    this.service.getCharacteristic(Characteristic.On)
         .on('get', this.getActionState.bind(this))
         .on('set', this.executeAction.bind(this));
 }
@@ -1442,8 +1735,7 @@ IndigoActionAccessory.prototype.executeAction = function(value, callback, contex
         // Turn the switch back off
         setTimeout(
             function() {
-                this.getService(Service.Switch)
-                    .getCharacteristic(Characteristic.On)
+                this.service.getCharacteristic(Characteristic.On)
                     .setValue(false, undefined, IndigoAccessory.REFRESH_CONTEXT);
             }.bind(this),
         1000);
