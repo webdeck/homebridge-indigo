@@ -914,7 +914,7 @@ IndigoPositionAccessory.prototype.update_brightness = function(brightness) {
 // json: the json that describes this device
 //
 function IndigoDoorAccessory(platform, deviceURL, json) {
-    IndigoPositionAccessory.call(this, platform, deviceURL, json, new Service.Door(this.name));
+    IndigoPositionAccessory.call(this, platform, Service.Door, deviceURL, json);
 }
 
 
@@ -926,7 +926,7 @@ function IndigoDoorAccessory(platform, deviceURL, json) {
 // json: the json that describes this device
 //
 function IndigoWindowAccessory(platform, deviceURL, json) {
-    IndigoPositionAccessory.call(this, platform, deviceURL, json, new Service.Window(this.name));
+    IndigoPositionAccessory.call(this, platform, Service.Window, deviceURL, json);
 }
 
 
@@ -938,7 +938,7 @@ function IndigoWindowAccessory(platform, deviceURL, json) {
 // json: the json that describes this device
 //
 function IndigoWindowCoveringAccessory(platform, deviceURL, json) {
-    IndigoPositionAccessory.call(this, platform, deviceURL, json, new Service.WindowCovering(this.name));
+    IndigoPositionAccessory.call(this, platform, Service.WindowCovering, deviceURL, json);
 }
 
 
