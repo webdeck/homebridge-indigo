@@ -1085,9 +1085,14 @@ IndigoGarageDoorAccessory.prototype.update_isOn = function(isOn) {
 function IndigoLightAccessory(platform, deviceURL, json) {
     IndigoAccessory.call(this, platform, Service.Lightbulb, deviceURL, json);
 
+    if (this.brightness) {
+        this.previousBrightness = this.brightness;
+
+    }
+
     this.service.getCharacteristic(Characteristic.On)
         .on('get', this.getOnState.bind(this))
-        .on('set', this.setOnState.bind(this));
+        .on('set', this.setLightOnState.bind(this));
 
     if (this.typeSupportsDim) {
         this.service.getCharacteristic(Characteristic.Brightness)
@@ -1096,13 +1101,37 @@ function IndigoLightAccessory(platform, deviceURL, json) {
     }
 }
 
+// Set the on state of the light
+// onState: true if on, false otherwise
+//          if true, sets the brightness to the previous brightness level, unless it is undefined or zero, in which case sends an ON command
+//          this hackery is because HomeKit sends both ON and BRIGHTNESS when adjusting a light's brightness
+// callback: invokes callback(error), error is undefined if no error occurred
+// context: if equal to IndigoAccessory.REFRESH_CONTEXT, will not call the Indigo RESTful API to update the device, otherwise will
+IndigoLightAccessory.prototype.setLightOnState = function(onState, callback, context) {
+    this.log("%s: setLightOnState(%d)", this.name, onState);
+    if (onState && this.previousBrightness) {
+        this.setBrightness(this.previousBrightness, callback, context);
+    } else {
+        this.setOnState(onState, callback, context)
+    }
+};
+
 // Get the brightness of the accessory
-// callback: invokes callback(error, position)
+// callback: invokes callback(error, brightness)
 //           error: error message or undefined if no error
 //           brightness: if device supports brightness, will return the brightness value
 IndigoLightAccessory.prototype.getBrightness = function(callback) {
     if (this.typeSupportsDim) {
-        this.query("brightness", callback);
+        this.query("brightness",
+            function(error, brightness) {
+                if (!error && brightness > 0) {
+                    this.previousBrightness = brightness;
+                }
+                if (callback) {
+                    callback(error, brightness);
+                }
+            }.bind(this)
+        );
     } else if (callback) {
         callback("Accessory does not support brightness");
     }
@@ -1121,6 +1150,9 @@ IndigoLightAccessory.prototype.setBrightness = function(brightness, callback, co
     }
     else if (this.typeSupportsDim) {
         if (brightness >= 0 && brightness <= 100) {
+            if (brightness > 0) {
+                this.previousBrightness = brightness;
+            }
             this.updateStatus({brightness: brightness}, callback);
         }
     }
@@ -1140,6 +1172,9 @@ IndigoLightAccessory.prototype.update_isOn = function(isOn) {
 // Update HomeKit state to match state of Indigo's brightness property
 // brightness: new value of brightness property
 IndigoLightAccessory.prototype.update_brightness = function(brightness) {
+    if (brightness > 0) {
+        this.previousBrightness = brightness;
+    }
     this.service.getCharacteristic(Characteristic.Brightness)
         .setValue(brightness, undefined, IndigoAccessory.REFRESH_CONTEXT);
 };
@@ -1155,14 +1190,33 @@ IndigoLightAccessory.prototype.update_brightness = function(brightness) {
 function IndigoFanAccessory(platform, deviceURL, json) {
     IndigoAccessory.call(this, platform, Service.Fan, deviceURL, json);
 
+    if (this.speedIndex) {
+        this.previousRotationSpeed = (this.speedIndex / 3.0) * 100.0;
+    }
+
     this.service.getCharacteristic(Characteristic.On)
         .on('get', this.getOnState.bind(this))
-        .on('set', this.setOnState.bind(this));
+        .on('set', this.setFanOnState.bind(this));
 
     this.service.getCharacteristic(Characteristic.RotationSpeed)
         .on('get', this.getRotationSpeed.bind(this))
         .on('set', this.setRotationSpeed.bind(this));
 }
+
+// Set the on state of the fan
+// onState: true if on, false otherwise
+//          if true, sets the speed index to the previous speed index level, unless it is undefined or zero, in which case sends an ON command
+//          this hackery is because HomeKit sends both ON and ROTATION SPEED when adjusting a fan's speed
+// callback: invokes callback(error), error is undefined if no error occurred
+// context: if equal to IndigoAccessory.REFRESH_CONTEXT, will not call the Indigo RESTful API to update the device, otherwise will
+IndigoFanAccessory.prototype.setFanOnState = function(onState, callback, context) {
+    this.log("%s: setFanOnState(%d)", this.name, onState);
+    if (onState && this.previousRotationSpeed) {
+        this.setRotationSpeed(this.previousRotationSpeed, callback, context);
+    } else {
+        this.setOnState(onState, callback, context)
+    }
+};
 
 // Get the rotation speed of the accessory
 // callback: invokes callback(error, speedIndex)
@@ -1176,10 +1230,15 @@ IndigoFanAccessory.prototype.getRotationSpeed = function(callback) {
                     if (callback) {
                         callback(error);
                     }
-                } else if (callback) {
-                    callback(undefined, (speedIndex / 3.0) * 100.0);
+                } else {
+                    if (speedIndex > 0) {
+                        this.previousRotationSpeed = (speedIndex / 3.0) * 100.0;
+                    }
+                    if (callback) {
+                        callback(undefined, (speedIndex / 3.0) * 100.0);
+                    }
                 }
-            }
+            }.bind(this)
         );
     }
     else if (callback) {
@@ -1192,6 +1251,7 @@ IndigoFanAccessory.prototype.getRotationSpeed = function(callback) {
 // callback: invokes callback(error), error is undefined if no error occurred
 // context: if equal to IndigoAccessory.REFRESH_CONTEXT, will not call the Indigo RESTful API to update the device, otherwise will
 IndigoFanAccessory.prototype.setRotationSpeed = function(rotationSpeed, callback, context) {
+    this.log("%s: setRotationSpeed(%d)", this.name, rotationSpeed);
     if (context == IndigoAccessory.REFRESH_CONTEXT) {
         if (callback) {
             callback();
@@ -1200,12 +1260,15 @@ IndigoFanAccessory.prototype.setRotationSpeed = function(rotationSpeed, callback
     else if (this.typeSupportsSpeedControl) {
         if (rotationSpeed >= 0.0 && rotationSpeed <= 100.0) {
             var speedIndex = 0;
-            if (rotationSpeed > 66.6) {
+            if (rotationSpeed > (100.0 / 3.0 * 2.0)) {
                 speedIndex = 3;
-            } else if (rotationSpeed > 33.3) {
+            } else if (rotationSpeed > (100.0 / 3.0)) {
                 speedIndex = 2;
             } else if (rotationSpeed > 0) {
                 speedIndex = 1;
+            }
+            if (rotationSpeed > 0) {
+                this.previousRotationSpeed = rotationSpeed;
             }
             this.updateStatus({speedIndex: speedIndex}, callback);
         }
@@ -1226,6 +1289,9 @@ IndigoFanAccessory.prototype.update_isOn = function(isOn) {
 // Update HomeKit state to match state of Indigo's speedIndex property
 // speedIndex: new value of speedIndex property
 IndigoFanAccessory.prototype.update_speedIndex = function(speedIndex) {
+    if (speedIndex > 0) {
+        this.previousRotationSpeed = (this.speedIndex / 3.0) * 100.0;
+    }
     this.service.getCharacteristic(Characteristic.RotationSpeed)
         .setValue((speedIndex / 3.0) * 100.0, undefined, IndigoAccessory.REFRESH_CONTEXT);
 };
