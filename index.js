@@ -25,6 +25,7 @@ Configuration example for your Homebridge config.json:
         "treatAsGarageDoorIds": [ "223344", "556677" ],
         "treatAsWindowIds": [ "123123", "456456" ],
         "treatAsWindowCoveringIds": [ "345345", "678678" ],
+        "invertOnOffIds": [ "234234", "567567" ],
         "thermostatsInCelsius": false,
         "accessoryNamePrefix": "",
         "listenPort": 8177
@@ -49,6 +50,7 @@ Fields:
     "treatAsGarageDoorIds": Array of Indigo IDs to treat as garage door openers (instead of lightbulbs) - devices must support on/off to qualify (on = open)
     "treatAsWindowIds": Array of Indigo IDs to treat as windows (instead of lightbulbs) - devices must support on/off to qualify (on = open)
     "treatAsWindowCoveringIds": Array of Indigo IDs to treat as window coverings (instead of lightbulbs) - devices must support on/off to qualify (on = open)
+    "invertOnOffIds": Array of Indigo IDs where on and off are inverted in meaning (e.g. if a lock, on = unlocked and off = locked)
     "thermostatsInCelsius": If true, thermostats in Indigo are reporting temperatures in celsius (optional, defaults to false)
     "accessoryNamePrefix": Prefix all accessory names with this string (optional, useful for testing)
     "listenPort": homebridge-indigo will listen on this port for device state updates from Indigo (requires compatible Indigo plugin) (optional, defaults to not listening)
@@ -164,6 +166,7 @@ function IndigoPlatform(log, config) {
     this.treatAsGarageDoorIds = config.treatAsGarageDoorIds;
     this.treatAsWindowIds = config.treatAsWindowIds;
     this.treatAsWindowCoveringIds = config.treatAsWindowCoveringIds;
+    this.invertOnOffIds = config.invertOnOffIds;
     this.thermostatsInCelsius = config.thermostatsInCelsius;
 
     if (config.accessoryNamePrefix) {
@@ -303,6 +306,12 @@ IndigoPlatform.prototype.includeItemId = function(id) {
     }
 
     return true;
+};
+
+// Returns true if the item id should treat on and off as inverted in meaning
+// id: the Indigo ID of the device/action
+IndigoPlatform.prototype.invertOnOffId = function(id) {
+    return (this.invertOnOffIds && (this.invertOnOffIds.indexOf(String(id)) >= 0));
 };
 
 // Makes a request to Indigo using the RESTful API
@@ -455,6 +464,11 @@ function IndigoAccessory(platform, serviceType, deviceURL, json) {
 
     this.updateFromJSON(json);
 
+    this.invertOnOff = platform.invertOnOffId(this.id);
+    if (this.invertOnOff) {
+        this.log("%s: Inverting on/off for this device", this.name);
+    }
+
     Accessory.call(this, this.name, uuid.generate(String(this.id)));
 
     this.infoService = this.getService(Service.AccessoryInformation);
@@ -594,6 +608,59 @@ IndigoAccessory.prototype.refreshFromJSON = function(json) {
 };
 
 
+// Conversions that support inverted definitions of on/off and brightness
+
+// Converts the value of Indigo's isOn parameter to some other constants representing on and off.
+// isOn: Evaluated as a boolean
+// onValue: Value to return for true
+// offValue: Value to return for false
+// Returns onValue if isOn evaluates to true, and offValue if isOn evaluates to false.
+// NOTE: If this accessory is configured to invert on/off values, onValue is returned if isOn evaluates to false,
+// and offValue is returned if isOn evaluates to true.
+IndigoAccessory.prototype.convertIsOnToValue = function(isOn, onValue, offValue) {
+    if (this.invertOnOff) {
+        return ((isOn) ? offValue : onValue);
+    } else {
+        return ((isOn) ? onValue : offValue);
+    }
+}
+
+// Converts the value of Indigo's isOn parameter to a boolean value.  Returns true or false.
+// isOn: Evaluated as a boolean
+// Returns true if isOn evaluates to true, and false if isOn evaluates to false.
+// NOTE: If this accessory is configured to invert on/off values, true is returned if isOn evaluates to false,
+// and false is returned if isOn evaluates to true.
+IndigoAccessory.prototype.convertIsOnToBoolean = function(isOn) {
+    return this.convertIsOnToValue(isOn, true, false);
+}
+
+// Converts a boolean expression to Indigo's isOn parameter values.  Returns 1 or 0.
+// b: Evaluated as a boolean
+// Returns 1 if b evaluates to true, and 0 if b evaluates to false.
+// NOTE: If this accessory is configured to invert on/off values, 1 is returned if b evaluates to false,
+// and 0 is returned if b evaluates to true.
+IndigoAccessory.prototype.convertBooleanToIsOn = function(b) {
+    if (this.invertOnOff) {
+        return ((b) ? 0 : 1);
+    } else {
+        return ((b) ? 1 : 0);
+    }
+}
+
+// Converts a brightness value to a possibly inverted value.
+// brightness: The brightness value, between 0 (fully dark) and 100 (fully bright)
+// Returns the brightness value
+// NOTE: If this accessory is configured to invert on/off values, then 0 becomes fully bright and 100 becomes
+// fully dark, so the inverted brightness value is returned.
+IndigoAccessory.prototype.convertBrightness = function(brightness) {
+    if (this.invertOnOff) {
+        return (100 - brightness);
+    } else {
+        return (brightness);
+    }
+}
+
+
 // Most accessories support on/off, so we include helper functions to get/set onState here
 
 // Get the current on/off state of the accessory
@@ -609,7 +676,7 @@ IndigoAccessory.prototype.getOnState = function(callback) {
                         callback(error);
                     }
                 } else {
-                    var onState = (this.isOn) ? true : false;
+                    var onState = this.convertIsOnToBoolean(this.isOn);
                     this.log("%s: getOnState() => %s", this.name, onState);
                     if (callback) {
                         callback(undefined, onState);
@@ -634,7 +701,7 @@ IndigoAccessory.prototype.setOnState = function(onState, callback, context) {
             callback();
         }
     } else if (this.typeSupportsOnOff) {
-        this.updateStatus({ isOn: (onState) ? 1 : 0 }, callback);
+        this.updateStatus({ isOn: this.convertBooleanToIsOn(onState) }, callback);
     } else if (callback) {
         callback("Accessory does not support on/off");
     }
@@ -659,9 +726,8 @@ function IndigoSwitchAccessory(platform, deviceURL, json) {
 // Update HomeKit state to match state of Indigo's isOn property
 // isOn: new value of isOn property
 IndigoSwitchAccessory.prototype.update_isOn = function(isOn) {
-    var onState = (isOn) ? true : false;
     this.service.getCharacteristic(Characteristic.On)
-        .setValue(onState, undefined, IndigoAccessory.REFRESH_CONTEXT);
+        .setValue(this.convertIsOnToBoolean(isOn), undefined, IndigoAccessory.REFRESH_CONTEXT);
 };
 
 
@@ -696,7 +762,7 @@ IndigoLockAccessory.prototype.getLockCurrentState = function(callback) {
                         callback(error);
                     }
                 } else {
-                    var lockState = (this.isOn) ? Characteristic.LockCurrentState.SECURED : Characteristic.LockCurrentState.UNSECURED;
+                    var lockState = this.convertIsOnToValue(this.isOn, Characteristic.LockCurrentState.SECURED, Characteristic.LockCurrentState.UNSECURED);
                     this.log("%s: getLockCurrentState() => %s", this.name, lockState);
                     if (callback) {
                         callback(undefined, lockState);
@@ -723,7 +789,7 @@ IndigoLockAccessory.prototype.getLockTargetState = function(callback) {
                         callback(error);
                     }
                 } else {
-                    var lockState = (this.isOn) ? Characteristic.LockTargetState.SECURED : Characteristic.LockTargetState.UNSECURED;
+                    var lockState = this.convertIsOnToValue(this.isOn, Characteristic.LockTargetState.SECURED, Characteristic.LockTargetState.UNSECURED);
                     this.log("%s: getLockTargetState() => %s", this.name, lockState);
                     if (callback) {
                         callback(undefined, lockState);
@@ -750,7 +816,7 @@ IndigoLockAccessory.prototype.setLockTargetState = function(lockState, callback,
         }
     }
     else if (this.typeSupportsOnOff) {
-        this.updateStatus({ isOn: (lockState == Characteristic.LockTargetState.SECURED) ? 1 : 0 }, callback);
+        this.updateStatus({ isOn: this.convertBooleanToIsOn(lockState == Characteristic.LockTargetState.SECURED) }, callback);
         // Update current state to match target state
         setTimeout(
             function() {
@@ -769,13 +835,12 @@ IndigoLockAccessory.prototype.setLockTargetState = function(lockState, callback,
 // Update HomeKit state to match state of Indigo's isOn property
 // isOn: new value of isOn property
 IndigoLockAccessory.prototype.update_isOn = function(isOn) {
-    var lockState = (isOn) ? Characteristic.LockCurrentState.SECURED : Characteristic.LockCurrentState.UNSECURED;
     this.service.getCharacteristic(Characteristic.LockCurrentState)
-        .setValue(lockState, undefined, IndigoAccessory.REFRESH_CONTEXT);
-
-    lockState = (isOn) ? Characteristic.LockTargetState.SECURED : Characteristic.LockTargetState.UNSECURED;
+        .setValue(this.convertIsOnToValue(isOn, Characteristic.LockCurrentState.SECURED, Characteristic.LockCurrentState.UNSECURED),
+                  undefined, IndigoAccessory.REFRESH_CONTEXT);
     this.service.getCharacteristic(Characteristic.LockTargetState)
-        .setValue(lockState, undefined, IndigoAccessory.REFRESH_CONTEXT);
+        .setValue(this.convertIsOnToValue(isOn, Characteristic.LockTargetState.SECURED, Characteristic.LockTargetState.UNSECURED),
+                  undefined, IndigoAccessory.REFRESH_CONTEXT);
 };
 
 
@@ -814,9 +879,9 @@ IndigoPositionAccessory.prototype.getPosition = function(callback) {
                         callback(error);
                     }
                 } else {
-                    var position = (this.isOn) ? 100 : 0;
+                    var position = this.convertIsOnToValue(this.isOn, 100, 0);
                     if (this.typeSupportsDim || this.typeIsDimmer) {
-                        position = this.brightness;
+                        position = this.convertBrightness(this.brightness);
                     }
                     this.log("%s: getPosition() => %s", this.name, position);
                     if (callback) {
@@ -861,9 +926,9 @@ IndigoPositionAccessory.prototype.setTargetPosition = function(position, callbac
     }
     else if (this.typeSupportsOnOff || this.typeSupportsDim || this.typeIsDimmer) {
         if (this.typeSupportsDim || this.typeIsDimmer) {
-            this.updateStatus({ brightness: position }, callback);
+            this.updateStatus({ brightness: this.convertBrightness(position) }, callback);
         } else {
-            this.updateStatus({ isOn: (position > 0) ? 1 : 0 }, callback);
+            this.updateStatus({ isOn: this.convertBooleanToIsOn(position > 0) }, callback);
         }
         // Update current state to match target state
         setTimeout(
@@ -884,7 +949,7 @@ IndigoPositionAccessory.prototype.setTargetPosition = function(position, callbac
 // isOn: new value of isOn property
 IndigoPositionAccessory.prototype.update_isOn = function(isOn) {
     if (! (this.typeSupportsDim || this.typeIsDimmer)) {
-        var position = (isOn) ? 100: 0;
+        var position = this.convertIsOnToValue(isOn, 100, 0);
         this.service
             .getCharacteristic(Characteristic.CurrentPosition)
             .setValue(position, undefined, IndigoAccessory.REFRESH_CONTEXT);
@@ -897,12 +962,13 @@ IndigoPositionAccessory.prototype.update_isOn = function(isOn) {
 // Update HomeKit state to match state of Indigo's brightness property
 // brightness: new value of brightness property
 IndigoPositionAccessory.prototype.update_brightness = function(brightness) {
+    var position = this.convertBrightness(brightness);
     this.service
         .getCharacteristic(Characteristic.CurrentPosition)
-        .setValue(brightness, undefined, IndigoAccessory.REFRESH_CONTEXT);
+        .setValue(position, undefined, IndigoAccessory.REFRESH_CONTEXT);
     this.service
         .getCharacteristic(Characteristic.TargetPosition)
-        .setValue(brightness, undefined, IndigoAccessory.REFRESH_CONTEXT);
+        .setValue(position, undefined, IndigoAccessory.REFRESH_CONTEXT);
 };
 
 
@@ -976,7 +1042,7 @@ IndigoGarageDoorAccessory.prototype.getCurrentDoorState = function(callback) {
                         callback(error);
                     }
                 } else {
-                    var doorState = (this.isOn) ? Characteristic.CurrentDoorState.OPEN : Characteristic.CurrentDoorState.CLOSED;
+                    var doorState = this.convertIsOnToValue(this.isOn, Characteristic.CurrentDoorState.OPEN, Characteristic.CurrentDoorState.CLOSED);
                     this.log("%s: getPosition() => %s", this.name, doorState);
                     if (callback) {
                         callback(undefined, doorState);
@@ -1003,7 +1069,7 @@ IndigoGarageDoorAccessory.prototype.getTargetDoorState = function(callback) {
                         callback(error);
                     }
                 } else {
-                    var doorState = (this.isOn) ? Characteristic.TargetDoorState.OPEN : Characteristic.TargetDoorState.CLOSED;
+                    var doorState = this.convertIsOnToValue(this.isOn, Characteristic.TargetDoorState.OPEN, Characteristic.TargetDoorState.CLOSED);
                     this.log("%s: getPosition() => %s", this.name, doorState);
                     if (callback) {
                         callback(undefined, doorState);
@@ -1030,7 +1096,7 @@ IndigoGarageDoorAccessory.prototype.setTargetDoorState = function(doorState, cal
         }
     }
     else if (this.typeSupportsOnOff) {
-        this.updateStatus({ isOn: (doorState == Characteristic.TargetDoorState.OPEN) ? 1 : 0 }, callback);
+        this.updateStatus({ isOn: this.convertBooleanToIsOn(doorState == Characteristic.TargetDoorState.OPEN) }, callback);
         // Update current state to match target state
         setTimeout(
             function() {
@@ -1065,13 +1131,12 @@ IndigoGarageDoorAccessory.prototype.getObstructionDetected = function(callback) 
 // Update HomeKit state to match state of Indigo's isOn property
 // isOn: new value of isOn property
 IndigoGarageDoorAccessory.prototype.update_isOn = function(isOn) {
-    var doorState = (isOn) ? Characteristic.CurrentDoorState.OPEN : Characteristic.CurrentDoorState.CLOSED;
     this.service.getCharacteristic(Characteristic.CurrentDoorState)
-        .setValue(doorState, undefined, IndigoAccessory.REFRESH_CONTEXT);
-
-    doorState = (isOn) ? Characteristic.TargetDoorState.OPEN : Characteristic.TargetDoorState.CLOSED;
+        .setValue(this.convertIsOnToValue(isOn, Characteristic.CurrentDoorState.OPEN, Characteristic.CurrentDoorState.CLOSED),
+                  undefined, IndigoAccessory.REFRESH_CONTEXT);
     this.service.getCharacteristic(Characteristic.TargetDoorState)
-        .setValue(doorState, undefined, IndigoAccessory.REFRESH_CONTEXT);
+        .setValue(this.convertIsOnToValue(isOn, Characteristic.TargetDoorState.OPEN, Characteristic.TargetDoorState.CLOSED),
+                  undefined, IndigoAccessory.REFRESH_CONTEXT);
 };
 
 
@@ -1127,7 +1192,7 @@ IndigoLightAccessory.prototype.getBrightness = function(callback) {
                     this.previousBrightness = brightness;
                 }
                 if (callback) {
-                    callback(error, brightness);
+                    callback(error, this.convertBrightness(brightness));
                 }
             }.bind(this)
         );
@@ -1152,7 +1217,7 @@ IndigoLightAccessory.prototype.setBrightness = function(brightness, callback, co
             if (brightness > 0) {
                 this.previousBrightness = brightness;
             }
-            this.updateStatus({brightness: brightness}, callback);
+            this.updateStatus({brightness: this.convertBrightness(brightness)}, callback);
         }
     }
     else if (callback) {
@@ -1163,9 +1228,8 @@ IndigoLightAccessory.prototype.setBrightness = function(brightness, callback, co
 // Update HomeKit state to match state of Indigo's isOn property
 // isOn: new value of isOn property
 IndigoLightAccessory.prototype.update_isOn = function(isOn) {
-    var onState = (isOn) ? true : false;
     this.service.getCharacteristic(Characteristic.On)
-        .setValue(onState, undefined, IndigoAccessory.REFRESH_CONTEXT);
+        .setValue(this.convertIsOnToBoolean(isOn), undefined, IndigoAccessory.REFRESH_CONTEXT);
 };
 
 // Update HomeKit state to match state of Indigo's brightness property
@@ -1175,7 +1239,7 @@ IndigoLightAccessory.prototype.update_brightness = function(brightness) {
         this.previousBrightness = brightness;
     }
     this.service.getCharacteristic(Characteristic.Brightness)
-        .setValue(brightness, undefined, IndigoAccessory.REFRESH_CONTEXT);
+        .setValue(this.convertBrightness(brightness), undefined, IndigoAccessory.REFRESH_CONTEXT);
 };
 
 
@@ -1230,11 +1294,12 @@ IndigoFanAccessory.prototype.getRotationSpeed = function(callback) {
                         callback(error);
                     }
                 } else {
-                    if (speedIndex > 0) {
-                        this.previousRotationSpeed = (speedIndex / 3.0) * 100.0;
+                    var rotationSpeed = (speedIndex / 3.0) * 100.0;
+                    if (rotationSpeed > 0) {
+                        this.previousRotationSpeed = rotationSpeed;
                     }
                     if (callback) {
-                        callback(undefined, (speedIndex / 3.0) * 100.0);
+                        callback(undefined, this.convertBrightness(rotationSpeed));
                     }
                 }
             }.bind(this)
@@ -1258,12 +1323,13 @@ IndigoFanAccessory.prototype.setRotationSpeed = function(rotationSpeed, callback
     }
     else if (this.typeSupportsSpeedControl || this.typeIsSpeedControl) {
         if (rotationSpeed >= 0.0 && rotationSpeed <= 100.0) {
+            var rs = this.convertBrightness(rotationSpeed);
             var speedIndex = 0;
-            if (rotationSpeed > (100.0 / 3.0 * 2.0)) {
+            if (rs > (100.0 / 3.0 * 2.0)) {
                 speedIndex = 3;
-            } else if (rotationSpeed > (100.0 / 3.0)) {
+            } else if (rs > (100.0 / 3.0)) {
                 speedIndex = 2;
-            } else if (rotationSpeed > 0) {
+            } else if (rs > 0) {
                 speedIndex = 1;
             }
             if (rotationSpeed > 0) {
@@ -1280,19 +1346,19 @@ IndigoFanAccessory.prototype.setRotationSpeed = function(rotationSpeed, callback
 // Update HomeKit state to match state of Indigo's isOn property
 // isOn: new value of isOn property
 IndigoFanAccessory.prototype.update_isOn = function(isOn) {
-    var onState = (isOn) ? true : false;
     this.service.getCharacteristic(Characteristic.On)
-        .setValue(onState, undefined, IndigoAccessory.REFRESH_CONTEXT);
+        .setValue(this.convertIsOnToBoolean(isOn), undefined, IndigoAccessory.REFRESH_CONTEXT);
 };
 
 // Update HomeKit state to match state of Indigo's speedIndex property
 // speedIndex: new value of speedIndex property
 IndigoFanAccessory.prototype.update_speedIndex = function(speedIndex) {
-    if (speedIndex > 0) {
-        this.previousRotationSpeed = (this.speedIndex / 3.0) * 100.0;
+    var rotationSpeed = (speedIndex / 3.0) * 100.0;
+    if (rotationSpeed > 0) {
+        this.previousRotationSpeed = rotationSpeed;
     }
     this.service.getCharacteristic(Characteristic.RotationSpeed)
-        .setValue((speedIndex / 3.0) * 100.0, undefined, IndigoAccessory.REFRESH_CONTEXT);
+        .setValue(this.convertBrightness(rotationSpeed), undefined, IndigoAccessory.REFRESH_CONTEXT);
 };
 
 

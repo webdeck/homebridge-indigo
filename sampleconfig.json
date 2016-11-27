@@ -27,6 +27,7 @@
             "treatAsGarageDoorIds": [ "223344", "556677" ],
             "treatAsWindowIds": [ "123123", "456456" ],
             "treatAsWindowCoveringIds": [ "345345", "678678" ],
+            "invertOnOffIds": [ "234234", "567567" ],
             "thermostatsInCelsius": false,
             "accessoryNamePrefix": "",
             "listenPort": 8177
