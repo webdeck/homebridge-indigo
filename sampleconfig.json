@@ -25,6 +25,7 @@
             "treatAsLockIds": [ "112233", "445566" ],
             "treatAsDoorIds": [ "224466", "664422" ],
             "treatAsGarageDoorIds": [ "223344", "556677" ],
+            "treatAsMotionSensorIds": [ "336699" ],
             "treatAsWindowIds": [ "123123", "456456" ],
             "treatAsWindowCoveringIds": [ "345345", "678678" ],
             "invertOnOffIds": [ "234234", "567567" ],
