@@ -24,6 +24,7 @@ Configuration example for your Homebridge config.json:
         "treatAsDoorIds": [ "224466", "664422" ],
         "treatAsGarageDoorIds": [ "223344", "556677" ],
         "treatAsMotionSensorIds": [ "336699" ],
+        "treatAsContactSensorIds": [ "446688" ],
         "treatAsWindowIds": [ "123123", "456456" ],
         "treatAsWindowCoveringIds": [ "345345", "678678" ],
         "invertOnOffIds": [ "234234", "567567" ],
@@ -50,6 +51,7 @@ Fields:
     "treatAsDoorIds": Array of Indigo IDs to treat as doors (instead of lightbulbs) - devices must support on/off to qualify (on = open)
     "treatAsGarageDoorIds": Array of Indigo IDs to treat as garage door openers (instead of lightbulbs) - devices must support on/off to qualify (on = open)
     "treatAsMotionSensorIds": Array of Indigo IDs to treat as motion sensors - devices must support on/off to qualify (on = triggered)
+    "treatAsContactSensorIds": Array of Indigo IDs to treat as contact sensors - devices must support on/off to qualify (on = contact detected)
     "treatAsWindowIds": Array of Indigo IDs to treat as windows (instead of lightbulbs) - devices must support on/off to qualify (on = open)
     "treatAsWindowCoveringIds": Array of Indigo IDs to treat as window coverings (instead of lightbulbs) - devices must support on/off to qualify (on = open)
     "invertOnOffIds": Array of Indigo IDs where on and off are inverted in meaning (e.g. if a lock, on = unlocked and off = locked)
@@ -88,6 +90,7 @@ module.exports = function(homebridge) {
     fixInheritance(IndigoWindowCoveringAccessory, IndigoPositionAccessory);
     fixInheritance(IndigoGarageDoorAccessory, IndigoAccessory);
     fixInheritance(IndigoMotionSensorAccessory, IndigoAccessory);
+    fixInheritance(IndigoContactSensorAccessory, IndigoAccessory);
     fixInheritance(IndigoLightAccessory, IndigoAccessory);
     fixInheritance(IndigoFanAccessory, IndigoAccessory);
     fixInheritance(IndigoThermostatAccessory, IndigoAccessory);
@@ -168,6 +171,7 @@ function IndigoPlatform(log, config) {
     this.treatAsDoorIds = config.treatAsDoorIds;
     this.treatAsGarageDoorIds = config.treatAsGarageDoorIds;
     this.treatAsMotionSensorIds = config.treatAsMotionSensorIds;
+    this.treatAsContactSensorIds = config.treatAsContactSensorIds;
     this.treatAsWindowIds = config.treatAsWindowIds;
     this.treatAsWindowCoveringIds = config.treatAsWindowCoveringIds;
     this.invertOnOffIds = config.invertOnOffIds;
@@ -399,6 +403,9 @@ IndigoPlatform.prototype.createAccessoryFromJSON = function(deviceURL, json) {
     } else if (json.typeSupportsOnOff && this.treatAsMotionSensorIds &&
                (this.treatAsMotionSensorIds.indexOf(String(json.id)) >= 0)) {
         return new IndigoMotionSensorAccessory(this, deviceURL, json);
+    } else if (json.typeSupportsOnOff && this.treatAsContactSensorIds &&
+               (this.treatAsContactSensorIds.indexOf(String(json.id)) >= 0)) {
+        return new IndigoContactSensorAccessory(this, deviceURL, json);
     } else if (json.typeSupportsOnOff && this.treatAsWindowIds &&
                (this.treatAsWindowIds.indexOf(String(json.id)) >= 0)) {
         return new IndigoWindowAccessory(this, deviceURL, json);
@@ -1165,6 +1172,28 @@ function IndigoMotionSensorAccessory(platform, deviceURL, json) {
 // isOn: new value of isOn property
 IndigoMotionSensorAccessory.prototype.update_isOn = function(isOn) {
     this.service.getCharacteristic(Characteristic.MotionDetected)
+        .setValue(this.convertIsOnToBoolean(isOn), undefined, IndigoAccessory.REFRESH_CONTEXT);
+};
+
+
+//
+// Indigo Contact Sensor Accessory
+//
+// platform: the HomeKit platform
+// deviceURL: the path of the RESTful call for this device, relative to the base URL in the configuration, starting with a /
+// json: the json that describes this device
+//
+function IndigoContactSensorAccessory(platform, deviceURL, json) {
+    IndigoAccessory.call(this, platform, Service.ContactSensor, deviceURL, json);
+
+    this.service.getCharacteristic(Characteristic.ContactSensorState)
+        .on('get', this.getOnState.bind(this));
+}
+
+// Update HomeKit state to match state of Indigo's isOn property
+// isOn: new value of isOn property
+IndigoContactSensorAccessory.prototype.update_isOn = function(isOn) {
+    this.service.getCharacteristic(Characteristic.ContactSensorState)
         .setValue(this.convertIsOnToBoolean(isOn), undefined, IndigoAccessory.REFRESH_CONTEXT);
 };
 
