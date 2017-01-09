@@ -1444,6 +1444,7 @@ function IndigoThermostatAccessory(platform, deviceURL, json, thermostatsInCelsi
         .on('set', this.setTargetHeatingCooling.bind(this));
 
     this.service.getCharacteristic(Characteristic.CurrentTemperature)
+        .setProps({minValue: -50})
         .on('get', this.getCurrentTemperature.bind(this));
 
     this.service.getCharacteristic(Characteristic.TargetTemperature)
