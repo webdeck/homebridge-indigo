@@ -1561,22 +1561,22 @@ IndigoThermostatAccessory.prototype.setTargetHeatingCooling = function(mode, cal
         }
     }
     else if (this.typeSupportsHVAC || this.typeIsHVAC) {
-        var qs;
+        var hvacCurrentMode;
         if (mode == Characteristic.TargetHeatingCoolingState.OFF) {
-            qs = { hvacOperationModeIsOff: "true" };
+            hvacCurrentMode = "all off";
         }
         else if (mode == Characteristic.TargetHeatingCoolingState.HEAT) {
-            qs = { hvacOperationModeIsHeat: "true" };
+            hvacCurrentMode = "heat on";
         }
         else if (mode == Characteristic.TargetHeatingCoolingState.COOL) {
-            qs = { hvacOperationModeIsCool: "true" };
+            hvacCurrentMode = "cool on";
         }
         else if (mode == Characteristic.TargetHeatingCoolingState.AUTO) {
-            qs = { hvacOperationModeIsAuto: "true" };
+            hvacCurrentMode = "auto on";
         }
 
-        if (qs) {
-            this.updateStatus(qs, callback);
+        if (hvacCurrentMode) {
+            this.updateStatus({hvacCurrentMode: hvacCurrentMode}, callback);
         } else if (callback) {
             callback("Unknown target heating/cooling state");
         }
