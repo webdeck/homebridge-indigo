@@ -19,14 +19,15 @@ Configuration example for your Homebridge config.json:
         "includeActions": true,
         "includeIds": [ "12345", "67890" ],
         "excludeIds": [ "98765", "43210" ],
-        "treatAsSwitchIds": [ "13579", "24680" ],
-        "treatAsLockIds": [ "112233", "445566" ],
-        "treatAsDoorIds": [ "224466", "664422" ],
-        "treatAsGarageDoorIds": [ "223344", "556677" ],
-        "treatAsMotionSensorIds": [ "336699" ],
         "treatAsContactSensorIds": [ "446688" ],
-        "treatAsWindowIds": [ "123123", "456456" ],
+        "treatAsDoorIds": [ "224466", "664422" ],
+        "treatAsFanIds": [ "4444441", "4444442" ],
+        "treatAsGarageDoorIds": [ "223344", "556677" ],
+        "treatAsLockIds": [ "112233", "445566" ],
+        "treatAsMotionSensorIds": [ "336699" ],
+        "treatAsSwitchIds": [ "13579", "24680" ],
         "treatAsWindowCoveringIds": [ "345345", "678678" ],
+        "treatAsWindowIds": [ "123123", "456456" ],
         "invertOnOffIds": [ "234234", "567567" ],
         "thermostatsInCelsius": false,
         "accessoryNamePrefix": "",
@@ -46,14 +47,15 @@ Fields:
     "includeActions": If true, creates HomeKit switches for your actions (optional, defaults to false)
     "includeIds": Array of Indigo IDs to include (optional - if provided, only these Indigo IDs will map to HomeKit devices)
     "excludeIds": Array of Indigo IDs to exclude (optional - if provided, these Indigo IDs will not be mapped to HomeKit devices)
-    "treatAsSwitchIds": Array of Indigo IDs to treat as switches (instead of lightbulbs) - devices must support on/off to qualify
-    "treatAsLockIds": Array of Indigo IDs to treat as locks (instead of lightbulbs) - devices must support on/off to qualify (on = locked)
-    "treatAsDoorIds": Array of Indigo IDs to treat as doors (instead of lightbulbs) - devices must support on/off to qualify (on = open)
-    "treatAsGarageDoorIds": Array of Indigo IDs to treat as garage door openers (instead of lightbulbs) - devices must support on/off to qualify (on = open)
-    "treatAsMotionSensorIds": Array of Indigo IDs to treat as motion sensors - devices must support on/off to qualify (on = triggered)
     "treatAsContactSensorIds": Array of Indigo IDs to treat as contact sensors - devices must support on/off to qualify (on = contact detected)
-    "treatAsWindowIds": Array of Indigo IDs to treat as windows (instead of lightbulbs) - devices must support on/off to qualify (on = open)
+    "treatAsDoorIds": Array of Indigo IDs to treat as doors (instead of lightbulbs) - devices must support on/off to qualify (on = open)
+    "treatAsFanIds": Array of Indigo IDs to treat as fans (instead of lightbulbs) = devices must support on/off to qualify.
+    "treatAsGarageDoorIds": Array of Indigo IDs to treat as garage door openers (instead of lightbulbs) - devices must support on/off to qualify (on = open)
+    "treatAsLockIds": Array of Indigo IDs to treat as locks (instead of lightbulbs) - devices must support on/off to qualify (on = locked)
+    "treatAsMotionSensorIds": Array of Indigo IDs to treat as motion sensors - devices must support on/off to qualify (on = triggered)
+    "treatAsSwitchIds": Array of Indigo IDs to treat as switches (instead of lightbulbs) - devices must support on/off to qualify
     "treatAsWindowCoveringIds": Array of Indigo IDs to treat as window coverings (instead of lightbulbs) - devices must support on/off to qualify (on = open)
+    "treatAsWindowIds": Array of Indigo IDs to treat as windows (instead of lightbulbs) - devices must support on/off to qualify (on = open)
     "invertOnOffIds": Array of Indigo IDs where on and off are inverted in meaning (e.g. if a lock, on = unlocked and off = locked)
     "thermostatsInCelsius": If true, thermostats in Indigo are reporting temperatures in celsius (optional, defaults to false)
     "accessoryNamePrefix": Prefix all accessory names with this string (optional, useful for testing)
@@ -124,6 +126,29 @@ function IndigoPlatform(log, config) {
         }.bind(this)
     );
 
+	var name = "Indigo Homebridge";
+	if (config.name) {
+		name = config.name;
+	}
+
+	var manufacturer = "Mike Riccio";
+	if (config.manufacturer) {
+		manufacturer = config.manufacturer;
+	}
+
+	var model = "1.0.0";
+	if (config.model) {
+		model = config.model;
+	}
+
+	var serialNumber = "00000000";
+	if (config.host) {
+		serialNumber = config.host;
+		if (config.port) {
+			serialNumber = serialNumber + "-" + config.port;
+		}
+	}
+
     this.foundAccessories = [];
     this.accessoryMap = new Map();
 
@@ -174,6 +199,7 @@ function IndigoPlatform(log, config) {
     this.treatAsContactSensorIds = config.treatAsContactSensorIds;
     this.treatAsWindowIds = config.treatAsWindowIds;
     this.treatAsWindowCoveringIds = config.treatAsWindowCoveringIds;
+    this.treatAsFanIds = config.treatAsFanIds;
     this.invertOnOffIds = config.invertOnOffIds;
     this.thermostatsInCelsius = config.thermostatsInCelsius;
 
@@ -391,6 +417,9 @@ IndigoPlatform.prototype.createAccessoryFromJSON = function(deviceURL, json) {
     } else if (json.typeSupportsOnOff && this.treatAsSwitchIds &&
                (this.treatAsSwitchIds.indexOf(String(json.id)) >= 0)) {
         return new IndigoSwitchAccessory(this, deviceURL, json);
+    } else if (json.typeSupportsOnOff && this.treatAsFanIds &&
+               (this.treatAsFanIds.indexOf(String(json.id)) >= 0)) {
+        return new IndigoFanAccessory(this, deviceURL, json);
     } else if (json.typeSupportsOnOff && this.treatAsLockIds &&
                (this.treatAsLockIds.indexOf(String(json.id)) >= 0)) {
         return new IndigoLockAccessory(this, deviceURL, json);
