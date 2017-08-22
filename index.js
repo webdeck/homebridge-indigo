@@ -126,29 +126,6 @@ function IndigoPlatform(log, config) {
         }.bind(this)
     );
 
-	var name = "Indigo Homebridge";
-	if (config.name) {
-		name = config.name;
-	}
-
-	var manufacturer = "Mike Riccio";
-	if (config.manufacturer) {
-		manufacturer = config.manufacturer;
-	}
-
-	var model = "1.0.0";
-	if (config.model) {
-		model = config.model;
-	}
-
-	var serialNumber = "00000000";
-	if (config.host) {
-		serialNumber = config.host;
-		if (config.port) {
-			serialNumber = serialNumber + "-" + config.port;
-		}
-	}
-
     this.foundAccessories = [];
     this.accessoryMap = new Map();
 
