@@ -38,8 +38,11 @@ Configuration sample:
             "treatAsLockIds": [ "112233", "445566" ],
             "treatAsDoorIds": [ "224466", "664422" ],
             "treatAsGarageDoorIds": [ "223344", "556677" ],
+            "treatAsMotionSensorIds": [ "336699" ],
+            "treatAsContactSensorIds": [ "446688" ],
             "treatAsWindowIds": [ "123123", "456456" ],
             "treatAsWindowCoveringIds": [ "345345", "678678" ],
+            "invertOnOffIds": [ "234234", "567567" ],
             "thermostatsInCelsius": false,
             "accessoryNamePrefix": "",
             "listenPort": 8177
@@ -63,8 +66,11 @@ Fields:
 * "treatAsLockIds": Array of Indigo IDs to treat as locks (instead of lightbulbs) - devices must support on/off to qualify (on = locked)
 * "treatAsDoorIds": Array of Indigo IDs to treat as doors (instead of lightbulbs) - devices must support on/off to qualify (on = open)
 * "treatAsGarageDoorIds": Array of Indigo IDs to treat as garage door openers (instead of lightbulbs) - devices must support on/off to qualify (on = open)
+* "treatAsMotionSensorIds": Array of Indigo IDs to treat as motion sensors - devices must support on/off to qualify (on = triggered)
+* "treatAsContactSensorIds": Array of Indigo IDs to treat as contact sensors - devices must support on/off to qualify (on = contact detected)
 * "treatAsWindowIds": Array of Indigo IDs to treat as windows (instead of lightbulbs) - devices must support on/off to qualify (on = open)
 * "treatAsWindowCoveringIds": Array of Indigo IDs to treat as window coverings (instead of lightbulbs) - devices must support on/off to qualify (on = open)
+* "invertOnOffIds": Array of Indigo IDs where on and off are inverted in meaning (e.g. if a lock, on = unlocked and off = locked)
 * "thermostatsInCelsius": If true, thermostats in Indigo are reporting temperatures in celsius (optional, defaults to false)
 * "accessoryNamePrefix": Prefix all accessory names with this string (optional, useful for testing)
 * "listenPort": homebridge-indigo will listen on this port for device state updates from Indigo (requires compatible Indigo plugin) (optional, defaults to not listening)
